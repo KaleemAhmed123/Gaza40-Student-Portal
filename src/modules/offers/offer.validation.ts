@@ -1,0 +1,39 @@
+import { z } from "zod";
+
+export const offerInputSchema = z.object({
+  regionId: z.string().uuid().optional(),
+  universityId: z.string().uuid().optional(),
+  universityCountry: z.string().min(1).optional(),
+  universityName: z.string().min(1),
+  courseName: z.string().min(1),
+  courseField: z.string().min(1),
+  courseLevel: z.string().min(1),
+  durationYears: z.coerce.number().positive(),
+  programmeStartDate: z.coerce.date(),
+  offerType: z.string().min(1),
+  conditions: z.string().min(1).optional(),
+  tuitionFeePerYear: z.coerce.number().nonnegative(),
+  courseFeeSourceUrl: z.string().url().optional(),
+  hasScholarship: z.boolean().default(false),
+  scholarshipName: z.string().min(1).optional(),
+  scholarshipAmountPerYear: z.coerce.number().nonnegative().optional(),
+  scholarshipCoversLivingCost: z.boolean().default(false),
+  privateFundingAmount: z.coerce.number().nonnegative().default(0),
+  privateFundingSource: z.string().min(1).optional(),
+  livingCostLocationKey: z.string().min(1).optional(),
+  livingCostForVisa: z.coerce.number().nonnegative().optional(),
+  boardingFees: z.coerce.number().nonnegative().optional()
+}).refine((input) => input.universityId || input.regionId || input.universityCountry, {
+  message: "universityId, regionId, or universityCountry is required",
+  path: ["universityCountry"]
+});
+
+export const reviewOfferSchema = z.object({
+  status: z.enum(["approved", "changes_requested", "rejected"]),
+  notes: z.string().min(1).optional()
+});
+
+export const listAdminOffersQuerySchema = z.object({
+  regionId: z.string().uuid().optional(),
+  status: z.enum(["draft", "under_review", "approved", "changes_requested", "rejected", "removed"]).optional()
+});
