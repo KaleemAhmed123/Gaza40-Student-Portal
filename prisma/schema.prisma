@@ -1,0 +1,436 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleCode {
+  student
+  mentor
+  regional_admin
+  master_admin
+}
+
+enum AccountStatus {
+  pending
+  active
+  disabled
+  rejected
+}
+
+enum ProfileStatus {
+  draft
+  submitted
+  under_review
+  approved
+  changes_requested
+  rejected
+}
+
+enum VolunteerStatus {
+  pending
+  approved
+  rejected
+  inactive
+}
+
+enum RegionalAdminStatus {
+  active
+  inactive
+}
+
+enum Sex {
+  male
+  female
+}
+
+enum GazaLocation {
+  deir_al_balah
+  bureij
+  north_gaza
+  gaza_city
+  nuseirat
+  zawaidah
+  maghazi
+  khan_yunis
+  other
+}
+
+enum PassportStatus {
+  valid
+  valid_expires_within_year
+  invalid_lost_never_had_one
+}
+
+enum PassportLocation {
+  in_gaza_with_me
+  egypt
+  ramallah
+  jordan
+  other
+}
+
+enum DocumentType {
+  national_id
+  passport
+  moi_letter
+  consent_form
+  offer_letter
+  scholarship_letter
+}
+
+enum DocumentStatus {
+  active
+  superseded
+  deleted
+  failed_scan
+}
+
+enum OfferReviewStatus {
+  draft
+  under_review
+  approved
+  changes_requested
+  rejected
+  removed
+}
+
+enum AlertStatus {
+  open
+  in_progress
+  resolved
+}
+
+model User {
+  id                    String                 @id @default(uuid())
+  email                 String                 @unique
+  passwordHash          String
+  fullName              String
+  phone                 String?
+  dateOfBirth           DateTime?
+  roles                 RoleCode[]             @default([])
+  accountStatus         AccountStatus          @default(active)
+  emailVerifiedAt       DateTime?
+  lastLoginAt           DateTime?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+  studentProfile        StudentProfile?
+  volunteerProfile      VolunteerProfile?
+  regionalAdminProfile  RegionalAdminProfile?  @relation("RegionalAdminUser")
+  regionalAdminsCreated RegionalAdminProfile[] @relation("RegionalAdminAssignedBy")
+  studentOffers         Offer[]                @relation("StudentOffers")
+  documents             Document[]
+  offerReviews          OfferRevision[]
+  studentAlerts         Alert[]                @relation("StudentAlerts")
+  assignedAlerts        Alert[]                @relation("AssignedAlerts")
+  assignedAlertsByMe    Alert[]                @relation("AlertAssignmentsCreated")
+  alertMessages         AlertMessage[]
+  announcements         Announcement[]
+  auditLogs             AuditLog[]
+
+  @@index([accountStatus])
+}
+
+model StudentProfile {
+  id                                  String            @id @default(uuid())
+  userId                              String            @unique
+  fullNameEnglish                     String?
+  sex                                 Sex?
+  dateOfBirth                         DateTime?
+  locationInGaza                      GazaLocation?
+  locationOther                       String?
+  hasOfferSelfReported                Boolean           @default(false)
+  hasVerifiedOffer                    Boolean           @default(false)
+  passportStatus                      PassportStatus?
+  passportLocation                    PassportLocation?
+  passportLocationOther               String?
+  emergencyContactFirstName           String?
+  emergencyContactRelation            String?
+  emergencyContactPhone               String?
+  englishMoi                          Boolean?
+  bachelorUniGaza                     String?
+  englishWorkplaceCertificatePossible Boolean?
+  englishOtherCerts                   String?
+  consentSigned                       Boolean           @default(false)
+  profileStatus                       ProfileStatus     @default(draft)
+  reviewedBy                          String?
+  reviewedAt                          DateTime?
+  reviewNotes                         String?
+  createdAt                           DateTime          @default(now())
+  updatedAt                           DateTime          @updatedAt
+  deletedAt                           DateTime?
+  user                                User              @relation(fields: [userId], references: [id])
+  documents                           Document[]
+
+  @@index([profileStatus])
+}
+
+model VolunteerProfile {
+  id                    String          @id @default(uuid())
+  userId                String          @unique
+  universityAffiliation String?
+  preferredRegionId     String?
+  volunteerStatus       VolunteerStatus @default(pending)
+  reviewedBy            String?
+  reviewedAt            DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  deletedAt             DateTime?
+  user                  User            @relation(fields: [userId], references: [id])
+
+  @@index([volunteerStatus])
+}
+
+model RegionalAdminProfile {
+  id               String              @id @default(uuid())
+  userId           String              @unique
+  regionId         String
+  status           RegionalAdminStatus @default(active)
+  assignedByUserId String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  deletedAt        DateTime?
+  user             User                @relation("RegionalAdminUser", fields: [userId], references: [id])
+  region           Region              @relation(fields: [regionId], references: [id])
+  assignedBy       User?               @relation("RegionalAdminAssignedBy", fields: [assignedByUserId], references: [id])
+
+  @@index([regionId])
+  @@index([status])
+}
+
+model Region {
+  id                    String                 @id @default(uuid())
+  code                  String                 @unique @map("countryCode")
+  name                  String                 @unique @map("countryName")
+  isActive              Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @default(now()) @updatedAt
+  deletedAt             DateTime?
+  regionalAdminProfiles RegionalAdminProfile[]
+  universities          University[]
+  offers                Offer[]
+  alerts                Alert[]
+
+  @@index([isActive])
+}
+
+model University {
+  id        String    @id @default(uuid())
+  regionId  String
+  name      String
+  city      String?
+  isLondon  Boolean   @default(false)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  region    Region    @relation(fields: [regionId], references: [id])
+  offers    Offer[]
+
+  @@unique([regionId, name])
+  @@index([regionId])
+  @@index([isActive])
+}
+
+model ConfigOption {
+  id        String    @id @default(uuid())
+  groupKey  String
+  value     String
+  labelEn   String
+  labelAr   String?
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  metadata  Json?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@unique([groupKey, value])
+  @@index([groupKey, isActive])
+}
+
+model Offer {
+  id                          String            @id @default(uuid())
+  studentUserId               String
+  regionId                    String
+  universityId                String?
+  universityName              String
+  courseName                  String
+  courseField                 String
+  courseLevel                 String
+  durationYears               Decimal           @db.Decimal(5, 2)
+  programmeStartDate          DateTime
+  offerType                   String
+  conditions                  String?
+  tuitionFeePerYear           Decimal           @db.Decimal(12, 2)
+  courseFeeSourceUrl          String?
+  hasScholarship              Boolean           @default(false)
+  scholarshipName             String?
+  scholarshipAmountPerYear    Decimal?          @db.Decimal(12, 2)
+  scholarshipCoversLivingCost Boolean           @default(false)
+  privateFundingAmount        Decimal           @default(0) @db.Decimal(12, 2)
+  privateFundingSource        String?
+  livingCostLocationKey       String?
+  livingCostForVisa           Decimal?          @db.Decimal(12, 2)
+  boardingFees                Decimal?          @db.Decimal(12, 2)
+  reviewStatus                OfferReviewStatus @default(draft)
+  lockedForReview             Boolean           @default(false)
+  reviewedBy                  String?
+  reviewedAt                  DateTime?
+  reviewNotes                 String?
+  createdAt                   DateTime          @default(now())
+  updatedAt                   DateTime          @updatedAt
+  deletedAt                   DateTime?
+  student                     User              @relation("StudentOffers", fields: [studentUserId], references: [id])
+  region                      Region            @relation(fields: [regionId], references: [id])
+  university                  University?       @relation(fields: [universityId], references: [id])
+  documents                   Document[]
+  revisions                   OfferRevision[]
+  alerts                      Alert[]
+
+  @@index([studentUserId])
+  @@index([regionId])
+  @@index([universityId])
+  @@index([reviewStatus])
+  @@index([offerType])
+  @@index([universityName])
+  @@index([courseField])
+  @@index([courseLevel])
+  @@index([createdAt])
+}
+
+model OfferRevision {
+  id            String   @id @default(uuid())
+  offerId       String
+  editedBy      String
+  beforeData    Json
+  afterData     Json
+  changedFields String[]
+  createdAt     DateTime @default(now())
+  offer         Offer    @relation(fields: [offerId], references: [id])
+  editor        User     @relation(fields: [editedBy], references: [id])
+
+  @@index([offerId])
+  @@index([editedBy])
+  @@index([createdAt])
+}
+
+model Document {
+  id               String          @id @default(uuid())
+  ownerUserId      String
+  studentProfileId String?
+  offerId          String?
+  documentType     DocumentType
+  originalFilename String
+  mimeType         String
+  fileSizeBytes    Int
+  storageBucket    String
+  storageKey       String
+  status           DocumentStatus  @default(active)
+  uploadedBy       String
+  createdAt        DateTime        @default(now())
+  deletedAt        DateTime?
+  owner            User            @relation(fields: [ownerUserId], references: [id])
+  studentProfile   StudentProfile? @relation(fields: [studentProfileId], references: [id])
+  offer            Offer?          @relation(fields: [offerId], references: [id])
+
+  @@index([ownerUserId])
+  @@index([studentProfileId])
+  @@index([offerId])
+  @@index([documentType])
+  @@index([status])
+}
+
+model Alert {
+  id               String         @id @default(uuid())
+  studentUserId    String
+  offerId          String?
+  regionId         String?
+  alertType        String
+  title            String
+  message          String
+  status           AlertStatus    @default(open)
+  assignedToUserId String?
+  assignedByUserId String?
+  resolvedAt       DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+  student          User           @relation("StudentAlerts", fields: [studentUserId], references: [id])
+  offer            Offer?         @relation(fields: [offerId], references: [id])
+  region           Region?        @relation(fields: [regionId], references: [id])
+  assignedTo       User?          @relation("AssignedAlerts", fields: [assignedToUserId], references: [id])
+  assignedBy       User?          @relation("AlertAssignmentsCreated", fields: [assignedByUserId], references: [id])
+  messages         AlertMessage[]
+
+  @@index([studentUserId])
+  @@index([offerId])
+  @@index([regionId])
+  @@index([assignedToUserId])
+  @@index([status])
+  @@index([alertType])
+}
+
+model AlertMessage {
+  id           String    @id @default(uuid())
+  alertId      String
+  senderUserId String
+  message      String
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+  alert        Alert     @relation(fields: [alertId], references: [id])
+  sender       User      @relation(fields: [senderUserId], references: [id])
+
+  @@index([alertId])
+  @@index([senderUserId])
+  @@index([createdAt])
+}
+
+model Announcement {
+  id              String    @id @default(uuid())
+  title           String
+  body            String
+  category        String?
+  createdByUserId String
+  isPublished     Boolean   @default(false)
+  publishedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  createdBy       User      @relation(fields: [createdByUserId], references: [id])
+
+  @@index([createdByUserId])
+  @@index([isPublished])
+  @@index([category])
+}
+
+model AppConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  actor       User?    @relation(fields: [actorUserId], references: [id])
+
+  @@index([actorUserId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
