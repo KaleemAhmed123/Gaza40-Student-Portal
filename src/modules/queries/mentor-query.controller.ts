@@ -1,6 +1,7 @@
 import { asyncHandler, sendSuccess } from "../../shared/http";
 import {
   addMentorMessage,
+  acceptMentorQuery,
   getMentorQuery,
   listMentorQueries,
   resolveMentorQuery
@@ -14,6 +15,16 @@ export const listMentorQueriesHandler = asyncHandler(async (req, res) => {
 
 export const getMentorQueryHandler = asyncHandler(async (req, res) => {
   const query = await getMentorQuery(req.authUser!.id, req.params.id);
+  sendSuccess(res, { query });
+});
+
+export const acceptMentorQueryHandler = asyncHandler(async (req, res) => {
+  const query = await acceptMentorQuery({
+    userId: req.authUser!.id,
+    queryId: req.params.id,
+    ipAddress: req.ip,
+    userAgent: req.get("user-agent")
+  });
   sendSuccess(res, { query });
 });
 

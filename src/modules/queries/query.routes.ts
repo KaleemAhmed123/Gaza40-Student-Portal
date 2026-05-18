@@ -9,6 +9,7 @@ import {
   resolveAdminQueryHandler
 } from "./admin-query.controller";
 import {
+  acceptMentorQueryHandler,
   addMentorQueryMessageHandler,
   getMentorQueryHandler,
   listMentorQueriesHandler,
@@ -41,5 +42,6 @@ adminQueryRouter.patch("/:id/resolve", resolveAdminQueryHandler);
 mentorQueryRouter.use(requireAuth, requireRole([RoleCode.mentor]));
 mentorQueryRouter.get("/", listMentorQueriesHandler);
 mentorQueryRouter.get("/:id", getMentorQueryHandler);
+mentorQueryRouter.patch("/:id/accept", acceptMentorQueryHandler);
 mentorQueryRouter.post("/:id/messages", addMentorQueryMessageHandler);
 mentorQueryRouter.patch("/:id/resolve", resolveMentorQueryHandler);

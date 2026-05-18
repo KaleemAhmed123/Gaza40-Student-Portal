@@ -266,9 +266,9 @@ export async function createQuery(input: {
   });
 
   void notifyAdmins(query.id).catch((error) => {
-    console.error("Query admin notification failed", {
-      message: error instanceof Error ? error.message : "Unknown notification error"
-    });
+    console.error(
+      `Query admin notification failed: ${error instanceof Error ? error.message : "Unknown notification error"}`
+    );
   });
 
   return getQueryOrThrow(query.id);
@@ -490,6 +490,39 @@ export async function getMentorQuery(userId: string, queryId: string) {
   }
 
   return query;
+}
+
+export async function acceptMentorQuery(input: {
+  userId: string;
+  queryId: string;
+  ipAddress?: string;
+  userAgent?: string;
+}) {
+  const query = await getMentorQuery(input.userId, input.queryId);
+  assertQueryWritable(query.status);
+
+  if (query.acceptedAt) {
+    return query;
+  }
+
+  const updatedQuery = await prisma.query.update({
+    where: { id: query.id },
+    data: { acceptedAt: new Date() },
+    include: queryInclude
+  });
+
+  await recordAuditLog({
+    actorUserId: input.userId,
+    action: "query_accepted",
+    entityType: "query",
+    entityId: query.id,
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent
+  });
+
+  notifyStudent(query.student.email, query.title);
+
+  return updatedQuery;
 }
 
 export async function addMentorMessage(input: {
