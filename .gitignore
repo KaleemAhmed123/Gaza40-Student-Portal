@@ -4,5 +4,3 @@ dist/
 uploads/
 *.log
 plans
-documentation
-prisma/migrations
