@@ -1,6 +1,8 @@
 import { RoleCode } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../../db/prisma";
+import { recordAuditLog } from "../../../shared/audit";
+import { toCsv } from "../../../shared/csv";
 import { ApiError } from "../../../shared/http";
 import type { ListAdminStudentsQuery } from "./admin-student-grid.validation";
 
@@ -214,4 +216,97 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
     })),
     pagination: { page: query.page, pageSize: query.pageSize, total }
   };
+}
+
+export async function exportAdminStudentsCsv(input: {
+  userId: string;
+  query: ListAdminStudentsQuery;
+  ipAddress?: string;
+  userAgent?: string;
+}) {
+  const scope = await getAdminScope(input.userId);
+  const where =
+    scope.role === "regional_admin"
+      ? buildRegionalWhere(input.query, scope.regionId)
+      : buildMasterWhere(input.query);
+
+  const students = await prisma.user.findMany({
+    where,
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      phone: true,
+      dateOfBirth: true,
+      createdAt: true,
+      accountStatus: true,
+      studentProfile: {
+        select: {
+          fullNameEnglish: true,
+          sex: true,
+          dateOfBirth: true,
+          locationInGaza: true,
+          passportStatus: true,
+          passportLocation: true,
+          consentSigned: true,
+          profileStatus: true,
+          hasOfferSelfReported: true,
+          hasVerifiedOffer: true,
+          emergencyContactFirstName: true,
+          emergencyContactRelation: true,
+          emergencyContactPhone: true
+        }
+      },
+      studentOffers: {
+        where: {
+          deletedAt: null,
+          ...(scope.role === "regional_admin" ? { regionId: scope.regionId } : {})
+        },
+        select: {
+          id: true,
+          universityName: true,
+          courseName: true,
+          reviewStatus: true,
+          region: { select: { name: true } }
+        },
+        orderBy: { updatedAt: "desc" }
+      }
+    },
+    orderBy: { createdAt: "desc" }
+  });
+
+  const rows = students.map((student) => ({
+    studentId: student.id,
+    fullName: student.fullName,
+    email: student.email,
+    phone: student.phone,
+    dateOfBirth: student.studentProfile?.dateOfBirth ?? student.dateOfBirth,
+    accountStatus: student.accountStatus,
+    profileStatus: student.studentProfile?.profileStatus,
+    locationInGaza: student.studentProfile?.locationInGaza,
+    passportStatus: student.studentProfile?.passportStatus,
+    passportLocation: student.studentProfile?.passportLocation,
+    consentSigned: student.studentProfile?.consentSigned,
+    hasOfferSelfReported: student.studentProfile?.hasOfferSelfReported,
+    hasVerifiedOffer: student.studentProfile?.hasVerifiedOffer,
+    emergencyContactName: student.studentProfile?.emergencyContactFirstName,
+    emergencyContactRelation: student.studentProfile?.emergencyContactRelation,
+    emergencyContactPhone: student.studentProfile?.emergencyContactPhone,
+    offerCount: student.studentOffers.length,
+    offerRegions: student.studentOffers.map((offer) => offer.region.name),
+    offerUniversities: student.studentOffers.map((offer) => offer.universityName),
+    offerStatuses: student.studentOffers.map((offer) => offer.reviewStatus),
+    createdAt: student.createdAt
+  }));
+
+  await recordAuditLog({
+    actorUserId: input.userId,
+    action: "students_exported",
+    entityType: "student",
+    metadata: { scope, filters: input.query, rowCount: rows.length },
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent
+  });
+
+  return toCsv(rows);
 }

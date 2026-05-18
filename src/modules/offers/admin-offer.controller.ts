@@ -1,5 +1,12 @@
+import { csvFilename } from "../../shared/csv";
 import { asyncHandler, sendSuccess } from "../../shared/http";
-import { getAdminOffer, listAdminOffers, reviewOffer } from "./offer.service";
+import {
+  exportAdminOffersCsv,
+  getAdminOffer,
+  getAdminOfferRevisions,
+  listAdminOffers,
+  reviewOffer
+} from "./offer.service";
 import { listAdminOffersQuerySchema, reviewOfferSchema } from "./offer.validation";
 
 export const listAdminOffersHandler = asyncHandler(async (req, res) => {
@@ -8,9 +15,28 @@ export const listAdminOffersHandler = asyncHandler(async (req, res) => {
   sendSuccess(res, { offers });
 });
 
+export const exportAdminOffersHandler = asyncHandler(async (req, res) => {
+  const query = listAdminOffersQuerySchema.parse(req.query);
+  const csv = await exportAdminOffersCsv({
+    userId: req.authUser!.id,
+    query,
+    ipAddress: req.ip,
+    userAgent: req.get("user-agent")
+  });
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${csvFilename("offers-export")}"`);
+  res.send(csv);
+});
+
 export const getAdminOfferHandler = asyncHandler(async (req, res) => {
   const offer = await getAdminOffer(req.authUser!.id, req.params.id);
   sendSuccess(res, { offer });
+});
+
+export const getAdminOfferRevisionsHandler = asyncHandler(async (req, res) => {
+  const revisions = await getAdminOfferRevisions(req.authUser!.id, req.params.id);
+  sendSuccess(res, { revisions });
 });
 
 export const reviewOfferHandler = asyncHandler(async (req, res) => {

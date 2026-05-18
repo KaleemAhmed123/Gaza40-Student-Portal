@@ -1,8 +1,13 @@
 import { RoleCode } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../../db/prisma";
+import { recordAuditLog } from "../../../shared/audit";
+import { toCsv } from "../../../shared/csv";
 import { ApiError } from "../../../shared/http";
-import type { ListAdminVolunteersQuery } from "./admin-volunteer-grid.validation";
+import type {
+  ListAdminVolunteersQuery,
+  UpdateVolunteerAssignmentInput
+} from "./admin-volunteer-grid.validation";
 
 type AdminScope =
   | { role: "master_admin"; regionId?: never }
@@ -152,4 +157,205 @@ export async function listAdminVolunteers(userId: string, query: ListAdminVolunt
     })),
     pagination: { page: query.page, pageSize: query.pageSize, total }
   };
+}
+
+export async function exportAdminVolunteersCsv(input: {
+  userId: string;
+  query: ListAdminVolunteersQuery;
+  ipAddress?: string;
+  userAgent?: string;
+}) {
+  const scope = await getAdminScope(input.userId);
+  const where = buildBaseWhere(input.query);
+
+  if (scope.role === "regional_admin") {
+    where.volunteerProfile = {
+      is: {
+        deletedAt: null,
+        preferredRegionId: scope.regionId,
+        ...(input.query.volunteerStatus ? { volunteerStatus: input.query.volunteerStatus } : {})
+      }
+    };
+  }
+
+  const volunteers = await prisma.user.findMany({
+    where,
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      phone: true,
+      dateOfBirth: true,
+      roles: true,
+      accountStatus: true,
+      createdAt: true,
+      volunteerProfile: {
+        select: {
+          universityAffiliation: true,
+          volunteerStatus: true,
+          preferredRegionId: true
+        }
+      },
+      regionalAdminProfile: {
+        select: {
+          status: true,
+          region: {
+            select: {
+              name: true
+            }
+          }
+        }
+      }
+    },
+    orderBy: { createdAt: "desc" }
+  });
+
+  const preferredRegionIds = volunteers
+    .map((volunteer) => volunteer.volunteerProfile?.preferredRegionId)
+    .filter((regionId): regionId is string => Boolean(regionId));
+  const preferredRegions = await prisma.region.findMany({
+    where: { id: { in: preferredRegionIds } },
+    select: { id: true, name: true }
+  });
+  const preferredRegionNameById = new Map(preferredRegions.map((region) => [region.id, region.name]));
+
+  const rows = volunteers.map((volunteer) => ({
+    volunteerId: volunteer.id,
+    fullName: volunteer.fullName,
+    email: volunteer.email,
+    phone: volunteer.phone,
+    dateOfBirth: volunteer.dateOfBirth,
+    roles: volunteer.roles,
+    accountStatus: volunteer.accountStatus,
+    volunteerStatus: volunteer.volunteerProfile?.volunteerStatus,
+    universityAffiliation: volunteer.volunteerProfile?.universityAffiliation,
+    preferredRegion: volunteer.volunteerProfile?.preferredRegionId
+      ? preferredRegionNameById.get(volunteer.volunteerProfile.preferredRegionId)
+      : undefined,
+    regionalAdminStatus: volunteer.regionalAdminProfile?.status,
+    regionalAdminRegion: volunteer.regionalAdminProfile?.region.name,
+    createdAt: volunteer.createdAt
+  }));
+
+  await recordAuditLog({
+    actorUserId: input.userId,
+    action: "volunteers_exported",
+    entityType: "volunteer",
+    metadata: { scope, filters: input.query, rowCount: rows.length },
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent
+  });
+
+  return toCsv(rows);
+}
+
+export async function updateVolunteerAssignment(input: {
+  actorUserId: string;
+  volunteerUserId: string;
+  data: UpdateVolunteerAssignmentInput;
+  ipAddress?: string;
+  userAgent?: string;
+}) {
+  const scope = await getAdminScope(input.actorUserId);
+  const volunteer = await prisma.user.findFirst({
+    where: {
+      id: input.volunteerUserId,
+      deletedAt: null,
+      volunteerProfile: { is: { deletedAt: null } }
+    },
+    include: { volunteerProfile: true }
+  });
+
+  if (!volunteer || !volunteer.volunteerProfile) {
+    throw new ApiError(404, "Volunteer not found");
+  }
+
+  if (volunteer.roles.includes(RoleCode.master_admin) || volunteer.roles.includes(RoleCode.regional_admin)) {
+    throw new ApiError(400, "Privileged accounts cannot be managed through volunteer assignment");
+  }
+
+  if (scope.role === "regional_admin") {
+    if (input.data.preferredRegionId && input.data.preferredRegionId !== scope.regionId) {
+      throw new ApiError(403, "Regional Admin cannot assign volunteers to another region");
+    }
+
+    if (volunteer.volunteerProfile.preferredRegionId !== scope.regionId) {
+      throw new ApiError(403, "Regional Admin can only manage volunteers already assigned to their region");
+    }
+
+    if (input.data.mentorEnabled === false) {
+      throw new ApiError(403, "Regional Admin cannot remove mentor role");
+    }
+  }
+
+  if (input.data.preferredRegionId) {
+    const region = await prisma.region.findFirst({
+      where: { id: input.data.preferredRegionId, isActive: true, deletedAt: null }
+    });
+
+    if (!region) {
+      throw new ApiError(400, "Invalid preferred region");
+    }
+  }
+
+  const nextRoles = input.data.mentorEnabled
+    ? Array.from(new Set([...volunteer.roles, RoleCode.mentor]))
+    : volunteer.roles;
+
+  const updatedVolunteer = await prisma.$transaction(async (tx) => {
+    await tx.volunteerProfile.update({
+      where: { userId: volunteer.id },
+      data: {
+        ...(input.data.volunteerStatus ? { volunteerStatus: input.data.volunteerStatus } : {}),
+        ...(input.data.preferredRegionId ? { preferredRegionId: input.data.preferredRegionId } : {}),
+        ...(input.data.volunteerStatus
+          ? {
+              reviewedBy: input.actorUserId,
+              reviewedAt: new Date()
+            }
+          : {})
+      }
+    });
+
+    return tx.user.update({
+      where: { id: volunteer.id },
+      data: { roles: { set: nextRoles } },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        roles: true,
+        accountStatus: true,
+        volunteerProfile: {
+          select: {
+            id: true,
+            universityAffiliation: true,
+            preferredRegionId: true,
+            volunteerStatus: true,
+            reviewedBy: true,
+            reviewedAt: true,
+            updatedAt: true
+          }
+        }
+      }
+    });
+  });
+
+  await recordAuditLog({
+    actorUserId: input.actorUserId,
+    action: "volunteer_assignment_updated",
+    entityType: "volunteer",
+    entityId: volunteer.id,
+    metadata: {
+      scope,
+      previousStatus: volunteer.volunteerProfile.volunteerStatus,
+      previousPreferredRegionId: volunteer.volunteerProfile.preferredRegionId,
+      next: input.data
+    },
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent
+  });
+
+  return updatedVolunteer;
 }
