@@ -47,8 +47,27 @@ const configOptions = [
   { groupKey: "offer_type", value: "unconditional", labelEn: "Unconditional", sortOrder: 20 },
   { groupKey: "offer_type", value: "deferred", labelEn: "Deferred", sortOrder: 30 },
   { groupKey: "offer_type", value: "rejected", labelEn: "Rejected", sortOrder: 40 },
-  { groupKey: "alert_type", value: "visa_offer_issue", labelEn: "I am facing an issue with my visa/offer.", sortOrder: 10 },
-  { groupKey: "alert_type", value: "whatsapp_group_issue", labelEn: "I have not been added to the WhatsApp group.", sortOrder: 20 },
+  {
+    groupKey: "query_category",
+    value: "visa_offer_issue",
+    labelEn: "I am facing an issue with my visa/offer.",
+    sortOrder: 10,
+    metadata: { requiresRegion: true }
+  },
+  {
+    groupKey: "query_category",
+    value: "whatsapp_group_issue",
+    labelEn: "I have not been added to the WhatsApp group.",
+    sortOrder: 20,
+    metadata: { requiresUniversity: true }
+  },
+  {
+    groupKey: "query_category",
+    value: "general_issue",
+    labelEn: "General issue",
+    sortOrder: 30,
+    metadata: {}
+  },
   { groupKey: "announcement_category", value: "scholarships", labelEn: "Scholarships", sortOrder: 10 },
   { groupKey: "announcement_category", value: "deadlines", labelEn: "Deadlines", sortOrder: 20 },
   { groupKey: "announcement_category", value: "passports", labelEn: "Passports", sortOrder: 30 },
@@ -97,6 +116,7 @@ async function seedConfigOptions() {
           labelEn: option.labelEn,
           sortOrder: option.sortOrder,
           isActive: true,
+          metadata: "metadata" in option ? option.metadata : undefined,
           deletedAt: null
         },
         create: option

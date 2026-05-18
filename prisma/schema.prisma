@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum RoleCode {
@@ -98,10 +99,12 @@ enum OfferReviewStatus {
   removed
 }
 
-enum AlertStatus {
+enum QueryStatus {
   open
-  in_progress
+  assigned @map("in_progress")
   resolved
+
+  @@map("AlertStatus")
 }
 
 model User {
@@ -125,10 +128,10 @@ model User {
   studentOffers         Offer[]                @relation("StudentOffers")
   documents             Document[]
   offerReviews          OfferRevision[]
-  studentAlerts         Alert[]                @relation("StudentAlerts")
-  assignedAlerts        Alert[]                @relation("AssignedAlerts")
-  assignedAlertsByMe    Alert[]                @relation("AlertAssignmentsCreated")
-  alertMessages         AlertMessage[]
+  studentQueries        Query[]                @relation("StudentQueries")
+  assignedQueries       Query[]                @relation("AssignedQueries")
+  assignedQueriesByMe   Query[]                @relation("QueryAssignmentsCreated")
+  queryMessages         QueryMessage[]
   announcements         Announcement[]
   auditLogs             AuditLog[]
 
@@ -213,7 +216,7 @@ model Region {
   regionalAdminProfiles RegionalAdminProfile[]
   universities          University[]
   offers                Offer[]
-  alerts                Alert[]
+  queries               Query[]
 
   @@index([isActive])
 }
@@ -290,7 +293,7 @@ model Offer {
   university                  University?       @relation(fields: [universityId], references: [id])
   documents                   Document[]
   revisions                   OfferRevision[]
-  alerts                      Alert[]
+  queries                     Query[]
 
   @@index([studentUserId])
   @@index([regionId])
@@ -345,49 +348,51 @@ model Document {
   @@index([status])
 }
 
-model Alert {
+model Query {
   id               String         @id @default(uuid())
   studentUserId    String
   offerId          String?
   regionId         String?
-  alertType        String
+  queryType        String         @map("alertType")
   title            String
   message          String
-  status           AlertStatus    @default(open)
+  status           QueryStatus    @default(open)
   assignedToUserId String?
   assignedByUserId String?
   resolvedAt       DateTime?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   deletedAt        DateTime?
-  student          User           @relation("StudentAlerts", fields: [studentUserId], references: [id])
+  student          User           @relation("StudentQueries", fields: [studentUserId], references: [id])
   offer            Offer?         @relation(fields: [offerId], references: [id])
   region           Region?        @relation(fields: [regionId], references: [id])
-  assignedTo       User?          @relation("AssignedAlerts", fields: [assignedToUserId], references: [id])
-  assignedBy       User?          @relation("AlertAssignmentsCreated", fields: [assignedByUserId], references: [id])
-  messages         AlertMessage[]
+  assignedTo       User?          @relation("AssignedQueries", fields: [assignedToUserId], references: [id])
+  assignedBy       User?          @relation("QueryAssignmentsCreated", fields: [assignedByUserId], references: [id])
+  messages         QueryMessage[]
 
   @@index([studentUserId])
   @@index([offerId])
   @@index([regionId])
   @@index([assignedToUserId])
   @@index([status])
-  @@index([alertType])
+  @@index([queryType])
+  @@map("Alert")
 }
 
-model AlertMessage {
+model QueryMessage {
   id           String    @id @default(uuid())
-  alertId      String
+  queryId      String    @map("alertId")
   senderUserId String
   message      String
   createdAt    DateTime  @default(now())
   deletedAt    DateTime?
-  alert        Alert     @relation(fields: [alertId], references: [id])
+  query        Query     @relation(fields: [queryId], references: [id])
   sender       User      @relation(fields: [senderUserId], references: [id])
 
-  @@index([alertId])
+  @@index([queryId])
   @@index([senderUserId])
   @@index([createdAt])
+  @@map("AlertMessage")
 }
 
 model Announcement {
