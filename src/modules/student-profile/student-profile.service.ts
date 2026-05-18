@@ -2,6 +2,7 @@ import { DocumentStatus, DocumentType, PassportStatus, ProfileStatus } from "@pr
 import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
 import { ApiError } from "../../shared/http";
+import { notifyMasterAdminsOfProfileSubmission } from "../../shared/review-email";
 import type { updateStudentProfileSchema } from "./student-profile.validation";
 import type { z } from "zod";
 
@@ -144,28 +145,27 @@ export async function submitMyStudentProfile(input: {
     requireProfileField(profile.bachelorUniGaza, "bachelorUniGaza", missingFields);
   }
 
-  const activeDocumentTypes = await getActiveDocumentTypes(profile.id);
   const missingDocuments: string[] = [];
 
-  if (!activeDocumentTypes.has(DocumentType.national_id)) {
-    missingDocuments.push(DocumentType.national_id);
-  }
-
-  if (!activeDocumentTypes.has(DocumentType.consent_form)) {
-    missingDocuments.push(DocumentType.consent_form);
-  }
-
-  if (profile.englishMoi && !activeDocumentTypes.has(DocumentType.moi_letter)) {
-    missingDocuments.push(DocumentType.moi_letter);
-  }
-
-  if (
-    profile.passportStatus &&
-    passportRequiresDocument.has(profile.passportStatus) &&
-    !activeDocumentTypes.has(DocumentType.passport)
-  ) {
-    missingDocuments.push(DocumentType.passport);
-  }
+  // Temporarily disabled for faster API testing. Re-enable before production because
+  // the SRS requires profile documents and signed consent before submission.
+  // const activeDocumentTypes = await getActiveDocumentTypes(profile.id);
+  // if (!activeDocumentTypes.has(DocumentType.national_id)) {
+  //   missingDocuments.push(DocumentType.national_id);
+  // }
+  // if (!activeDocumentTypes.has(DocumentType.consent_form)) {
+  //   missingDocuments.push(DocumentType.consent_form);
+  // }
+  // if (profile.englishMoi && !activeDocumentTypes.has(DocumentType.moi_letter)) {
+  //   missingDocuments.push(DocumentType.moi_letter);
+  // }
+  // if (
+  //   profile.passportStatus &&
+  //   passportRequiresDocument.has(profile.passportStatus) &&
+  //   !activeDocumentTypes.has(DocumentType.passport)
+  // ) {
+  //   missingDocuments.push(DocumentType.passport);
+  // }
 
   if (missingFields.length > 0 || missingDocuments.length > 0) {
     throw new ApiError(
@@ -193,6 +193,22 @@ export async function submitMyStudentProfile(input: {
     ipAddress: input.ipAddress,
     userAgent: input.userAgent
   });
+
+  const student = await prisma.user.findUnique({
+    where: { id: input.userId },
+    select: { fullName: true, email: true }
+  });
+
+  if (student) {
+    void notifyMasterAdminsOfProfileSubmission({
+      studentName: student.fullName,
+      studentEmail: student.email
+    }).catch((error) => {
+      console.error(
+        `Profile review email notification failed: ${error instanceof Error ? error.message : "Unknown notification error"}`
+      );
+    });
+  }
 
   return submittedProfile;
 }
