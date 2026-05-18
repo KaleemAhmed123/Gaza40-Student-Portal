@@ -35,5 +35,17 @@ export const reviewOfferSchema = z.object({
 
 export const listAdminOffersQuerySchema = z.object({
   regionId: z.string().uuid().optional(),
-  status: z.enum(["draft", "under_review", "approved", "changes_requested", "rejected", "removed"]).optional()
+  status: z.enum(["draft", "under_review", "approved", "changes_requested", "rejected", "removed"]).optional(),
+  offerType: z.string().min(1).optional(),
+  universityName: z.string().min(1).optional(),
+  courseField: z.string().min(1).optional(),
+  courseLevel: z.string().min(1).optional(),
+  fundingType: z.enum(["fully_funded", "partial_funding", "private_funding", "no_funding"]).optional(),
+  hasScholarship: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((value) => (value === undefined ? undefined : value === "true")),
+  search: z.string().min(1).optional(),
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(25)
 });

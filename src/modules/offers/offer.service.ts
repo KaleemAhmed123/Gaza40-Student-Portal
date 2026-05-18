@@ -1,6 +1,7 @@
 import { DocumentStatus, DocumentType, OfferReviewStatus, Prisma, ProfileStatus, RoleCode } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
+import { toCsv } from "../../shared/csv";
 import { ApiError } from "../../shared/http";
 import {
   calculateOfferFinancialSummary,
@@ -481,7 +482,11 @@ async function canReviewOffer(userId: string, regionId: string) {
   return Boolean(regionalAdmin);
 }
 
-export async function listAdminOffers(userId: string, query: ListAdminOffersQuery) {
+type AdminOfferScope =
+  | { role: "master_admin"; regionId?: never }
+  | { role: "regional_admin"; regionId: string };
+
+async function getAdminOfferScope(userId: string): Promise<AdminOfferScope> {
   const masterAdmin = await prisma.user.findFirst({
     where: {
       id: userId,
@@ -491,37 +496,291 @@ export async function listAdminOffers(userId: string, query: ListAdminOffersQuer
     }
   });
 
-  let assignedRegionId: string | undefined;
-  if (!masterAdmin) {
-    const regionalAdmin = await prisma.user.findFirst({
-      where: {
-        id: userId,
-        deletedAt: null,
-        accountStatus: "active",
-        roles: { has: RoleCode.regional_admin }
-      },
-      include: { regionalAdminProfile: true }
-    });
-
-    if (!regionalAdmin?.regionalAdminProfile || regionalAdmin.regionalAdminProfile.status !== "active") {
-      throw new ApiError(403, "You do not have permission to access offers");
-    }
-
-    assignedRegionId = regionalAdmin.regionalAdminProfile.regionId;
+  if (masterAdmin) {
+    return { role: "master_admin" };
   }
 
-  const offers = await prisma.offer.findMany({
+  const regionalAdmin = await prisma.user.findFirst({
     where: {
+      id: userId,
       deletedAt: null,
-      ...(query.status ? { reviewStatus: query.status } : {}),
-      ...(query.regionId ? { regionId: query.regionId } : {}),
-      ...(masterAdmin ? {} : { regionId: assignedRegionId })
+      accountStatus: "active",
+      roles: { has: RoleCode.regional_admin }
     },
-    include: offerInclude,
+    include: { regionalAdminProfile: true }
+  });
+
+  if (!regionalAdmin?.regionalAdminProfile || regionalAdmin.regionalAdminProfile.status !== "active") {
+    throw new ApiError(403, "You do not have permission to access offers");
+  }
+
+  return { role: "regional_admin", regionId: regionalAdmin.regionalAdminProfile.regionId };
+}
+
+function buildAdminOfferWhere(query: ListAdminOffersQuery, scope: AdminOfferScope): Prisma.OfferWhereInput {
+  return {
+    deletedAt: null,
+    ...(query.status ? { reviewStatus: query.status } : {}),
+    ...(query.regionId ? { regionId: query.regionId } : {}),
+    ...(query.offerType ? { offerType: { equals: query.offerType, mode: "insensitive" } } : {}),
+    ...(query.universityName
+      ? { universityName: { contains: query.universityName, mode: "insensitive" } }
+      : {}),
+    ...(query.courseField ? { courseField: { equals: query.courseField, mode: "insensitive" } } : {}),
+    ...(query.courseLevel ? { courseLevel: { equals: query.courseLevel, mode: "insensitive" } } : {}),
+    ...(query.hasScholarship === undefined ? {} : { hasScholarship: query.hasScholarship }),
+    ...(query.search
+      ? {
+          OR: [
+            { universityName: { contains: query.search, mode: "insensitive" } },
+            { courseName: { contains: query.search, mode: "insensitive" } },
+            { courseField: { contains: query.search, mode: "insensitive" } },
+            { student: { fullName: { contains: query.search, mode: "insensitive" } } },
+            { student: { email: { contains: query.search, mode: "insensitive" } } }
+          ]
+        }
+      : {}),
+    ...(query.fundingType === "fully_funded"
+      ? { hasScholarship: true, scholarshipCoversLivingCost: true }
+      : {}),
+    ...(query.fundingType === "partial_funding"
+      ? { hasScholarship: true, scholarshipCoversLivingCost: false }
+      : {}),
+    ...(query.fundingType === "private_funding"
+      ? { hasScholarship: false, privateFundingAmount: { gt: 0 } }
+      : {}),
+    ...(query.fundingType === "no_funding"
+      ? { hasScholarship: false, privateFundingAmount: 0 }
+      : {}),
+    ...(scope.role === "regional_admin" ? { regionId: scope.regionId } : {})
+  };
+}
+
+function emptySummary() {
+  return {
+    total: 0,
+    byOfferType: {} as Record<string, number>,
+    byUniversity: {} as Record<string, number>,
+    byFundingType: {
+      fully_funded: 0,
+      partial_funding: 0,
+      private_funding: 0,
+      no_funding: 0
+    },
+    byReviewStatus: {} as Record<string, number>
+  };
+}
+
+function getFundingType(offer: Prisma.OfferGetPayload<{ include: typeof offerInclude }>) {
+  if (offer.hasScholarship && offer.scholarshipCoversLivingCost) {
+    return "fully_funded";
+  }
+
+  if (offer.hasScholarship) {
+    return "partial_funding";
+  }
+
+  if (decimalToNumber(offer.privateFundingAmount) > 0) {
+    return "private_funding";
+  }
+
+  return "no_funding";
+}
+
+function buildOfferSummary(offers: Prisma.OfferGetPayload<{ include: typeof offerInclude }>[]) {
+  const summary = emptySummary();
+  summary.total = offers.length;
+
+  for (const offer of offers) {
+    summary.byOfferType[offer.offerType] = (summary.byOfferType[offer.offerType] ?? 0) + 1;
+    summary.byUniversity[offer.universityName] = (summary.byUniversity[offer.universityName] ?? 0) + 1;
+    summary.byReviewStatus[offer.reviewStatus] = (summary.byReviewStatus[offer.reviewStatus] ?? 0) + 1;
+    summary.byFundingType[getFundingType(offer)] += 1;
+  }
+
+  return summary;
+}
+
+function jsonRecord(value: Prisma.JsonValue) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function formatOfferRevision(
+  revision: Prisma.OfferRevisionGetPayload<{
+    include: { editor: { select: { id: true; fullName: true; email: true } } };
+  }>
+) {
+  const beforeData = jsonRecord(revision.beforeData);
+  const afterData = jsonRecord(revision.afterData);
+
+  return {
+    id: revision.id,
+    offerId: revision.offerId,
+    editedBy: revision.editedBy,
+    editor: revision.editor,
+    changedFields: revision.changedFields,
+    changes: revision.changedFields.map((field) => ({
+      field,
+      before: beforeData[field] ?? null,
+      after: afterData[field] ?? null
+    })),
+    createdAt: revision.createdAt
+  };
+}
+
+async function getLatestOfferRevisionByOfferId(offerIds: string[]) {
+  if (offerIds.length === 0) {
+    return new Map<string, ReturnType<typeof formatOfferRevision>>();
+  }
+
+  const revisions = await prisma.offerRevision.findMany({
+    where: { offerId: { in: offerIds } },
+    include: { editor: { select: { id: true, fullName: true, email: true } } },
+    orderBy: { createdAt: "desc" }
+  });
+
+  const latestByOfferId = new Map<string, ReturnType<typeof formatOfferRevision>>();
+  for (const revision of revisions) {
+    if (!latestByOfferId.has(revision.offerId)) {
+      latestByOfferId.set(revision.offerId, formatOfferRevision(revision));
+    }
+  }
+
+  return latestByOfferId;
+}
+
+export async function listAdminOffers(userId: string, query: ListAdminOffersQuery) {
+  const scope = await getAdminOfferScope(userId);
+
+  if (scope.role === "regional_admin" && query.regionId && query.regionId !== scope.regionId) {
+    throw new ApiError(403, "You do not have permission to access offers in this region");
+  }
+
+  const where = buildAdminOfferWhere(query, scope);
+  const skip = (query.page - 1) * query.pageSize;
+
+  const [offers, total, summaryOffers] = await prisma.$transaction([
+    prisma.offer.findMany({
+      where,
+      include: offerInclude,
+      orderBy: { updatedAt: "desc" },
+      skip,
+      take: query.pageSize
+    }),
+    prisma.offer.count({ where }),
+    prisma.offer.findMany({
+      where,
+      include: offerInclude
+    }
+    )
+  ]);
+
+  const formattedOffers = await Promise.all(offers.map(formatOffer));
+  const latestRevisionByOfferId = await getLatestOfferRevisionByOfferId(offers.map((offer) => offer.id));
+
+  return {
+    scope,
+    offers: formattedOffers.map((offer) => ({
+      ...offer,
+      latestRevision: latestRevisionByOfferId.get(offer.id) ?? null
+    })),
+    summary: buildOfferSummary(summaryOffers),
+    pagination: { page: query.page, pageSize: query.pageSize, total }
+  };
+}
+
+export async function exportAdminOffersCsv(input: {
+  userId: string;
+  query: ListAdminOffersQuery;
+  ipAddress?: string;
+  userAgent?: string;
+}) {
+  const scope = await getAdminOfferScope(input.userId);
+
+  if (scope.role === "regional_admin" && input.query.regionId && input.query.regionId !== scope.regionId) {
+    throw new ApiError(403, "You do not have permission to access offers in this region");
+  }
+
+  const where = buildAdminOfferWhere(input.query, scope);
+  const offers = await prisma.offer.findMany({
+    where,
+    include: {
+      ...offerInclude,
+      student: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          phone: true,
+          studentProfile: {
+            select: {
+              emergencyContactFirstName: true,
+              emergencyContactRelation: true,
+              emergencyContactPhone: true
+            }
+          }
+        }
+      }
+    },
     orderBy: { updatedAt: "desc" }
   });
 
-  return Promise.all(offers.map(formatOffer));
+  const financialSummaries = await Promise.all(offers.map(formatOffer));
+  const rows = offers.map((offer, index) => ({
+    offerId: offer.id,
+    studentId: offer.studentUserId,
+    studentName: offer.student.fullName,
+    studentEmail: offer.student.email,
+    studentPhone: offer.student.phone,
+    emergencyContactName: offer.student.studentProfile?.emergencyContactFirstName,
+    emergencyContactRelation: offer.student.studentProfile?.emergencyContactRelation,
+    emergencyContactPhone: offer.student.studentProfile?.emergencyContactPhone,
+    region: offer.region.name,
+    universityName: offer.universityName,
+    courseName: offer.courseName,
+    courseField: offer.courseField,
+    courseLevel: offer.courseLevel,
+    durationYears: decimalToNumber(offer.durationYears),
+    programmeStartDate: offer.programmeStartDate,
+    offerType: offer.offerType,
+    reviewStatus: offer.reviewStatus,
+    tuitionFeePerYear: decimalToNumber(offer.tuitionFeePerYear),
+    hasScholarship: offer.hasScholarship,
+    scholarshipName: offer.scholarshipName,
+    scholarshipAmountPerYear: offer.scholarshipAmountPerYear
+      ? decimalToNumber(offer.scholarshipAmountPerYear)
+      : undefined,
+    scholarshipCoversLivingCost: offer.scholarshipCoversLivingCost,
+    privateFundingAmount: decimalToNumber(offer.privateFundingAmount),
+    fundingType: getFundingType(offer),
+    currency: financialSummaries[index].financialSummary.currency,
+    completeYears: financialSummaries[index].financialSummary.completeYears,
+    availableFundsForYear: financialSummaries[index].financialSummary.availableFundsForYear,
+    tuitionFeePerYearCovered: financialSummaries[index].financialSummary.tuitionFeePerYearCovered,
+    tuitionFeePerYearGap: financialSummaries[index].financialSummary.tuitionFeePerYearGap,
+    estimatedLivingOrBoardingCost: financialSummaries[index].financialSummary.estimatedLivingOrBoardingCost,
+    livingCostCovered: financialSummaries[index].financialSummary.livingCostCovered,
+    livingCostGap: financialSummaries[index].financialSummary.livingCostGap,
+    livingCostSource: financialSummaries[index].financialSummary.livingCostSource,
+    documents: offer.documents.map((document) => document.originalFilename),
+    createdAt: offer.createdAt,
+    updatedAt: offer.updatedAt
+  }));
+
+  await recordAuditLog({
+    actorUserId: input.userId,
+    action: "offers_exported",
+    entityType: "offer",
+    metadata: { scope, filters: input.query, rowCount: rows.length },
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent
+  });
+
+  return toCsv(rows);
 }
 
 export async function getAdminOffer(userId: string, offerId: string) {
@@ -538,7 +797,39 @@ export async function getAdminOffer(userId: string, offerId: string) {
     throw new ApiError(403, "You do not have permission to access this offer");
   }
 
-  return formatOffer(offer);
+  const revisions = await prisma.offerRevision.findMany({
+    where: { offerId: offer.id },
+    include: { editor: { select: { id: true, fullName: true, email: true } } },
+    orderBy: { createdAt: "desc" }
+  });
+
+  return {
+    ...(await formatOffer(offer)),
+    revisions: revisions.map(formatOfferRevision)
+  };
+}
+
+export async function getAdminOfferRevisions(userId: string, offerId: string) {
+  const offer = await prisma.offer.findFirst({
+    where: { id: offerId, deletedAt: null },
+    select: { id: true, regionId: true }
+  });
+
+  if (!offer) {
+    throw new ApiError(404, "Offer not found");
+  }
+
+  if (!(await canReviewOffer(userId, offer.regionId))) {
+    throw new ApiError(403, "You do not have permission to access this offer");
+  }
+
+  const revisions = await prisma.offerRevision.findMany({
+    where: { offerId: offer.id },
+    include: { editor: { select: { id: true, fullName: true, email: true } } },
+    orderBy: { createdAt: "desc" }
+  });
+
+  return revisions.map(formatOfferRevision);
 }
 
 export async function reviewOffer(input: {
