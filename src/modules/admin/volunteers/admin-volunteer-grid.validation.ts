@@ -10,4 +10,11 @@ export const listAdminVolunteersQuerySchema = z.object({
   pageSize: z.coerce.number().int().positive().max(100).default(25)
 });
 
+export const updateVolunteerAssignmentSchema = z.object({
+  volunteerStatus: z.nativeEnum(VolunteerStatus).optional(),
+  preferredRegionId: z.string().uuid().optional(),
+  mentorEnabled: z.boolean().optional()
+});
+
 export type ListAdminVolunteersQuery = z.infer<typeof listAdminVolunteersQuerySchema>;
+export type UpdateVolunteerAssignmentInput = z.infer<typeof updateVolunteerAssignmentSchema>;
