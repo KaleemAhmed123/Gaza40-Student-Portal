@@ -22,7 +22,13 @@ export function sendEmailBestEffort(input: EmailInput) {
   const client = getResendClient();
   const recipients = input.to.filter(Boolean);
 
-  if (!client || recipients.length === 0) {
+  if (!client) {
+    console.warn("Email notification skipped: RESEND_API_KEY is not configured");
+    return;
+  }
+
+  if (recipients.length === 0) {
+    console.warn("Email notification skipped: no recipients");
     return;
   }
 
@@ -33,9 +39,17 @@ export function sendEmailBestEffort(input: EmailInput) {
       subject: input.subject,
       text: input.text
     })
+    .then((result) => {
+      if (result.error) {
+        console.error(`Email notification failed: ${result.error.message}`);
+        return;
+      }
+
+      console.info("Email notification accepted by provider");
+    })
     .catch((error) => {
-      console.error("Email notification failed", {
-        message: error instanceof Error ? error.message : "Unknown email error"
-      });
+      console.error(
+        `Email notification failed: ${error instanceof Error ? error.message : "Unknown email error"}`
+      );
     });
 }

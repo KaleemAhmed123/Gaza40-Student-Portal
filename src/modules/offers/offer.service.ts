@@ -3,6 +3,7 @@ import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
 import { toCsv } from "../../shared/csv";
 import { ApiError } from "../../shared/http";
+import { notifyAdminsOfOfferReview } from "../../shared/review-email";
 import {
   calculateOfferFinancialSummary,
   decimalToNumber,
@@ -119,6 +120,22 @@ async function getOfferFinancialRules() {
   }
 
   return parseFinancialRules(config.value);
+}
+
+function notifyOfferReviewBestEffort(input: {
+  studentName: string;
+  studentEmail: string;
+  offerId: string;
+  regionId: string;
+  universityName: string;
+  courseName: string;
+  reason: "submitted" | "edited_after_approval";
+}) {
+  void notifyAdminsOfOfferReview(input).catch((error) => {
+    console.error(
+      `Offer review email notification failed: ${error instanceof Error ? error.message : "Unknown notification error"}`
+    );
+  });
 }
 
 async function formatOffer(offer: Prisma.OfferGetPayload<{ include: typeof offerInclude }>) {
@@ -350,6 +367,23 @@ export async function updateMyOffer(input: {
       ipAddress: input.ipAddress,
       userAgent: input.userAgent
     });
+
+    const student = await prisma.user.findUnique({
+      where: { id: input.userId },
+      select: { fullName: true, email: true }
+    });
+
+    if (student) {
+      notifyOfferReviewBestEffort({
+        studentName: student.fullName,
+        studentEmail: student.email,
+        offerId: existingOffer.id,
+        regionId: offer.regionId,
+        universityName: offer.universityName,
+        courseName: offer.courseName,
+        reason: "edited_after_approval"
+      });
+    }
   }
 
   return formatOffer(offer);
@@ -447,6 +481,23 @@ export async function submitMyOffer(input: {
     ipAddress: input.ipAddress,
     userAgent: input.userAgent
   });
+
+  const student = await prisma.user.findUnique({
+    where: { id: input.userId },
+    select: { fullName: true, email: true }
+  });
+
+  if (student) {
+    notifyOfferReviewBestEffort({
+      studentName: student.fullName,
+      studentEmail: student.email,
+      offerId: submittedOffer.id,
+      regionId: submittedOffer.regionId,
+      universityName: submittedOffer.universityName,
+      courseName: submittedOffer.courseName,
+      reason: "submitted"
+    });
+  }
 
   return formatOffer(submittedOffer);
 }

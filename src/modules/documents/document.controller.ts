@@ -41,7 +41,9 @@ export const uploadDocumentHandler = asyncHandler(async (req, res) => {
 export const downloadDocumentHandler = asyncHandler(async (req, res) => {
   const { document, absolutePath } = await getDownloadableDocument({
     documentId: req.params.id,
-    requesterUserId: req.authUser!.id
+    requesterUserId: req.authUser!.id,
+    ipAddress: req.ip,
+    userAgent: req.get("user-agent")
   });
 
   res.download(absolutePath, document.originalFilename);

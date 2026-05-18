@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { DocumentStatus, DocumentType, RoleCode } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { recordAuditLog } from "../../shared/audit";
 import { ApiError } from "../../shared/http";
 import {
   localPrivateBucket,
@@ -93,6 +94,8 @@ export async function saveDocument(input: {
 export async function getDownloadableDocument(input: {
   documentId: string;
   requesterUserId: string;
+  ipAddress?: string;
+  userAgent?: string;
 }) {
   const document = await prisma.document.findFirst({
     where: {
@@ -125,6 +128,21 @@ export async function getDownloadableDocument(input: {
   if (!fs.existsSync(absolutePath)) {
     throw new ApiError(404, "Document file not found");
   }
+
+  await recordAuditLog({
+    actorUserId: input.requesterUserId,
+    action: "document_downloaded",
+    entityType: "document",
+    entityId: document.id,
+    metadata: {
+      ownerUserId: document.ownerUserId,
+      documentType: document.documentType,
+      offerId: document.offerId,
+      studentProfileId: document.studentProfileId
+    },
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent
+  });
 
   return {
     document,
