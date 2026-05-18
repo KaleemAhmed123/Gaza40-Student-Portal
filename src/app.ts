@@ -6,12 +6,18 @@ import morgan from "morgan";
 import { env } from "./config/env";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware";
 import { apiRateLimiter, authRateLimiter, uploadRateLimiter } from "./middleware/rate-limit.middleware";
+import { adminAuditLogRouter } from "./modules/admin/audit-logs/admin-audit-log.routes";
 import { adminStudentProfileRouter } from "./modules/admin/student-profiles/admin-student-profile.routes";
 import { adminStudentGridRouter } from "./modules/admin/students/admin-student-grid.routes";
 import { adminVolunteerGridRouter } from "./modules/admin/volunteers/admin-volunteer-grid.routes";
 import { adminAnnouncementRouter, announcementRouter } from "./modules/announcements/announcement.routes";
 import { authRouter } from "./modules/auth/auth.routes";
 import { adminConfigRouter, configRouter } from "./modules/config/config.routes";
+import {
+  adminDashboardRouter,
+  mentorDashboardRouter,
+  studentDashboardRouter
+} from "./modules/dashboard/dashboard.routes";
 import { documentRouter } from "./modules/documents/document.routes";
 import { healthRouter } from "./modules/health/health.routes";
 import { adminOfferRouter } from "./modules/offers/admin-offer.routes";
@@ -38,9 +44,11 @@ app.use("/api/documents", uploadRateLimiter, documentRouter);
 app.use("/api", apiRateLimiter);
 app.use("/api/config", configRouter);
 app.use("/api/announcements", announcementRouter);
+app.use("/api/student/dashboard", studentDashboardRouter);
 app.use("/api/student/profile", studentProfileRouter);
 app.use("/api/student/offers", studentOfferRouter);
 app.use("/api/queries", studentQueryRouter);
+app.use("/api/admin/dashboard", adminDashboardRouter);
 app.use("/api/admin/student-profiles", adminStudentProfileRouter);
 app.use("/api/admin/students", adminStudentGridRouter);
 app.use("/api/admin/volunteers", adminVolunteerGridRouter);
@@ -48,6 +56,8 @@ app.use("/api/admin/offers", adminOfferRouter);
 app.use("/api/admin/config", adminConfigRouter);
 app.use("/api/admin/queries", adminQueryRouter);
 app.use("/api/admin/announcements", adminAnnouncementRouter);
+app.use("/api/admin/audit-logs", adminAuditLogRouter);
+app.use("/api/mentor/dashboard", mentorDashboardRouter);
 app.use("/api/mentor/queries", mentorQueryRouter);
 
 app.use(notFoundHandler);
