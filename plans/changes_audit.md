@@ -575,6 +575,62 @@ These documents define the initial planning baseline and keep the work anchored 
 - Accepting a query writes a `query_accepted` audit log.
 - Kept the workflow simple: no extra query status was added.
 
+## 2026-05-19 - Admin Grid Summaries
+
+### Behavior Added
+
+- Extended existing `GET /api/admin/students`; no new route added.
+- Master Admin student grid now returns summary counts by profile status, passport status, Gaza location, consent, and verified offer.
+- Regional Admin student grid returns only scoped total summary to avoid exposing extra profile details.
+- Extended existing `GET /api/admin/volunteers`; no new route added.
+- Volunteer grid now returns summary counts by volunteer status, role, and preferred region.
+
+## 2026-05-19 - MVP Gaps And Deployment Documentation
+
+### Documentation Added
+
+- Added `documentation/mvp-gaps.md`.
+- Added `documentation/deployment.md`.
+- Updated `documentation/README.md`.
+- Updated `documentation/setup.md`.
+
+### Decisions Captured
+
+- Profile document gate is intentionally bypassed only for testing and must be re-enabled before production/demo sign-off.
+- Local upload storage is acceptable for development but not durable for hosted production.
+- Render free hosting can be used for demo/staging with UptimeRobot keep-alive.
+- Email deliverability requires a verified Resend domain before production.
+
+## 2026-05-19 - Git Hygiene Cleanup
+
+### Repository Rules Updated
+
+- Updated `.gitignore` so project planning docs are no longer ignored.
+- Kept `.env`, dependencies, build output, upload storage, logs, cookies, and local debug files ignored.
+- Removed local Git exclude rules for `documentation`, `plans`, and `prisma/migrations`.
+
+### Result
+
+- Documentation, plans, and Prisma migrations are now visible to Git and can be committed intentionally.
+- Local secrets and generated/runtime artifacts remain ignored.
+
+## 2026-05-19 - Final Backend Cleanup Docs
+
+### Behavior And Documentation Updated
+
+- Added Node `22.x` engine pin for Render consistency.
+- Updated testing docs to reflect the temporary profile document bypass.
+- Documented that CSV exports must not include public document URLs.
+- Clarified that protected document IDs or authenticated download paths are preferred for sensitive file references.
+
+## 2026-05-19 - Postman Collection Overview Guide
+
+### Developer Testing Updated
+
+- Added a detailed collection-level testing story to `Gaza40+ API.postman_collection.json`.
+- Updated `scripts/update-postman-collection.ps1` so the collection overview survives future regeneration.
+- The guide now gives a numbered API execution order from health checks through auth, profile, admin review, offers, revisions, queries, announcements, grids, dashboards, audit logs, auth recovery, and negative security tests.
+
 ## 2026-05-16 / 2026-05-17 - Developer Documentation
 
 ### Documentation Added

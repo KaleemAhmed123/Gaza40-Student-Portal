@@ -494,6 +494,7 @@ curl.exe -i -b student.cookies -X DELETE http://localhost:4000/api/student/offer
 ## Admin Students Grid
 
 Master Admin sees all registered students with profile/offer summary fields. Regional Admin sees only students who have at least one offer in the admin's assigned offer/university region.
+Response includes `summary` counts for the current filtered result set. Master Admin receives profile/passport/Gaza-location/consent/verified-offer counts. Regional Admin receives the scoped total only to avoid leaking extra student profile details.
 
 Important:
 - `locationInGaza` is the student's Gaza location.
@@ -530,6 +531,7 @@ curl.exe -i -b regional.cookies http://localhost:4000/api/admin/students
 ### `GET /api/admin/students/export`
 
 Exports the same filtered student grid as CSV. Master Admin exports all matching students. Regional Admin exports only students with offers in their assigned offer/university region.
+Sensitive document files are not exported as public URLs. If file references are added to CSV exports, they must use document IDs or protected download paths that still require authentication.
 
 ```powershell
 curl.exe -L -b admin.cookies "http://localhost:4000/api/admin/students/export?profileStatus=approved&locationInGaza=gaza_city" -o students-export.csv
@@ -542,6 +544,7 @@ curl.exe -L -b regional.cookies "http://localhost:4000/api/admin/students/export
 ## Admin Volunteers Grid
 
 Master Admin sees all registered volunteers with status, roles, and profile fields. Regional Admin sees volunteers whose `preferredRegionId` matches the admin's assigned offer/university region.
+Response includes `summary` counts for the current filtered result set by volunteer status, role, and preferred region.
 
 Note:
 - Regional volunteer scoping currently uses `VolunteerProfile.preferredRegionId`.
@@ -739,6 +742,7 @@ curl.exe -i -b regional.cookies "http://localhost:4000/api/admin/offers?status=u
 ### `GET /api/admin/offers/export`
 
 Exports the same filtered offers grid as CSV, including student contact fields and calculated financial summary columns. Regional Admin exports are scoped to their assigned offer/university region.
+Sensitive offer documents are not exported as public URLs. File references must remain protected by API authorization.
 
 ```powershell
 curl.exe -L -b admin.cookies "http://localhost:4000/api/admin/offers/export?fundingType=partial_funding&hasScholarship=true" -o offers-export.csv

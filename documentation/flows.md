@@ -102,6 +102,8 @@
 2. Master Admin can filter by profile status, passport status, Gaza location, consent, verified offer, and search text.
 3. Regional Admin opens the same endpoint but sees only students with offers in the admin's assigned offer/university region.
 4. Regional Admin access is never based on `locationInGaza`; that field remains a student profile filter/display field only.
+5. Master Admin student grid response includes summary counts for the filtered result set.
+6. Regional Admin student grid response includes only the scoped total summary.
 
 ## Admin Volunteers Grid Flow
 
@@ -111,6 +113,7 @@
 4. This is the simple MVP volunteer-region rule until explicit volunteer assignment rules are added.
 5. Master Admin can assign a volunteer to a preferred region, update volunteer status, and ensure mentor role is enabled.
 6. Regional Admin can update status and enable mentor role only for volunteers already assigned to their region.
+7. Volunteer grid response includes summary counts by volunteer status, role, and preferred region.
 
 ## Admin Offers Grid Flow
 

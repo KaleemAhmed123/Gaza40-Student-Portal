@@ -65,6 +65,12 @@ corepack pnpm dev
 - `GET /health`
 - `GET /health/db`
 
+## Deployment
+
+See `deployment.md` for Render/Supabase deployment notes.
+
+Known production gaps are tracked in `mvp-gaps.md`.
+
 ## Development Admin
 
 Seeded by:
