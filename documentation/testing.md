@@ -4,6 +4,7 @@
 
 ```powershell
 corepack pnpm lint
+corepack pnpm build
 ```
 
 ## Database Checks
@@ -170,10 +171,11 @@ curl.exe -i -b student.cookies -X POST http://localhost:4000/api/admin/config/op
 3. Patch student profile.
 4. Optionally upload `consent_form` and `national_id` to test file upload behavior.
 5. Submit profile. Required profile-document checks are temporarily bypassed during current API testing.
-7. Seed the development Master Admin.
-8. Login admin and keep cookies in `admin.cookies`.
-9. List under-review profiles.
-10. Approve/request changes/reject profile.
+6. Seed the development Master Admin.
+7. Login admin and keep cookies in `admin.cookies`.
+8. List under-review profiles.
+9. Approve/request changes/reject profile.
+10. Use the Postman collection overview for the full end-to-end story covering offers, queries, announcements, dashboards, exports, audit logs, and negative security checks.
 
 ## Offer Smoke Test
 

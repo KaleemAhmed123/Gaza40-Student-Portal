@@ -1,5 +1,7 @@
 # Security & Access Control Specification
 
+Implementation note: this file started as the MVP security plan. Current implemented behavior is tracked in `documentation/auth-rbac.md`, `documentation/api.md`, and `plans/changes_audit.md`.
+
 This specification is scoped to the MVP in `vision/requirements.md`. Because the platform handles vulnerable-population data, uploaded IDs, passports, emergency contacts, and funding details, server-side access control is mandatory even for the MVP.
 
 ## PII & Sensitive Data Inventory
@@ -97,12 +99,11 @@ This specification is scoped to the MVP in `vision/requirements.md`. Because the
 - Cookies must use `Secure`, `HttpOnly`, and `SameSite=Lax` or stricter where compatible.
 - Add CSRF protection or an equivalent same-site/token strategy for mutating requests.
 - Require email uniqueness.
-- Add password reset flow before launch.
-- Add email verification before profile submission if feasible for MVP.
+- Password reset and email verification token flows now exist. Email verification is not currently enforced before login or profile submission.
 - Token expiry should be short enough to reduce risk and long enough for low-connectivity users. Proposed default: short-lived access token with refresh handling if needed.
 - JWT role claims are convenience hints only. Sensitive admin, region, and file-access routes must check current database permissions.
 - Admin actions such as exports and sensitive file access may require fresher authentication.
-- Rate-limit login, signup, password reset, upload, and export endpoints.
+- Rate-limit login, signup, password reset, upload, and export endpoints. Basic in-memory rate limiting exists; distributed rate limiting is still deferred.
 - Lock or slow down accounts after repeated failed login attempts.
 - Store password hashes using a modern password hashing algorithm such as Argon2id or bcrypt.
 - Never log passwords, document contents, signed URLs, or full emergency contact details in application logs.

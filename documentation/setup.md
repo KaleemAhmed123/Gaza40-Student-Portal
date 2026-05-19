@@ -6,10 +6,10 @@ Document how a developer runs the project locally.
 
 ## Prerequisites
 
-- Node.js version:
-- pnpm version:
-- PostgreSQL/Supabase requirement:
-- Required environment variables:
+- Node.js `22.x` is the target version. This matches Render and `package.json`.
+- pnpm `10.18.0` through Corepack. The version is pinned in `package.json`.
+- PostgreSQL database. Supabase Postgres is the current hosted option.
+- A local `.env` file based on `.env.example`.
 
 ## Install
 

@@ -24,8 +24,8 @@
   - Acceptable for low-risk route gating.
 
 - `requireActiveDbRole`
-  - Should be replaced during the schema-adjustment pass.
-  - New sensitive checks should read `User.roles` directly from the database.
+  - Reads the current user from the database and verifies `deletedAt`, `accountStatus`, and `User.roles`.
+  - Use this for sensitive Master Admin-only routes where JWT role claims are not enough.
 
 - Rate limiting
   - General `/api` requests are rate-limited.

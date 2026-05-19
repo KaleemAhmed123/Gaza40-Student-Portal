@@ -37,6 +37,18 @@
 4. Master Admin approves, requests changes, or rejects.
 5. System writes an audit log.
 
+## Auth Recovery Flow
+
+1. User requests a password reset with their email.
+2. System returns a generic response whether or not the email exists.
+3. If the user exists and email is configured, system creates a hashed, single-use password reset token and sends a best-effort email.
+4. User submits the token and new password.
+5. System consumes the token, updates the password, and writes an audit log.
+6. Authenticated users can request an email verification link.
+7. System creates a hashed, single-use email verification token and sends a best-effort email.
+8. User submits the token and system sets `emailVerifiedAt`.
+9. Email verification exists, but it does not currently block login or profile submission.
+
 ## Offer Flow
 
 1. Student must have an `approved` profile before managing offers.

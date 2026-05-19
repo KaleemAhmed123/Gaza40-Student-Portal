@@ -141,25 +141,15 @@ These documents define the initial planning baseline and keep the work anchored 
 
 ### Migrations
 
-- `prisma/migrations/20260516120739_initial_auth/migration.sql`
-  - Added initial auth/user/profile/region/audit baseline.
+- `prisma/migrations/20260517000000_clean_baseline/migration.sql`
+  - Current clean baseline for the simplified Prisma schema.
+  - Includes users, regions, universities, config, profiles, documents, offers, query/ticket tables, announcements, audit logs, and app config.
 
-- `prisma/migrations/20260516123458_student_profile_documents/migration.sql`
-  - Added student profile fields, document enums, and document metadata table.
+- `prisma/migrations/20260519000000_auth_tokens/migration.sql`
+  - Added `AuthToken` and `AuthTokenType` for password reset and email verification.
 
-- `prisma/migrations/20260516145447_offer_management/migration.sql`
-  - Added offer management, offer document types, offer revisions, and app config.
-
-- `prisma/migrations/20260516195827_schema_update/migration.sql`
-  - Historical schema update migration present in the current migration history.
-
-- `prisma/migrations/20260517000000_simplified_target_schema/migration.sql`
-  - Migrated from the early schema to the simplified final schema.
-  - Backfilled `User.roles` from previous role records.
-  - Backfilled `RegionalAdminProfile` from previous regional assignment records.
-  - Backfilled `Offer.studentUserId` from previous profile-linked offers.
-  - Added `University`, `ConfigOption`, query/ticket tables, and `Announcement`.
-  - Dropped old role and regional-assignment tables after data was copied.
+- `prisma/migrations/20260519001000_query_acceptance/migration.sql`
+  - Added `acceptedAt` for mentor query acceptance.
 
 ### Seed Scripts
 
@@ -426,7 +416,8 @@ These documents define the initial planning baseline and keep the work anchored 
 - Added document upload route rate limiting.
 - Added environment defaults for rate-limit windows and limits.
 - Documented safe logging rules.
-- Documented deferred CSRF, email verification, account lockout, password reset, and distributed rate limiting.
+- Documented deferred CSRF, account lockout, and distributed rate limiting.
+- Password reset and email verification were deferred at this point, then implemented later with hashed `AuthToken` records.
 
 ## 2026-05-17 - Admin Students Grid API
 
@@ -631,6 +622,21 @@ These documents define the initial planning baseline and keep the work anchored 
 - Updated `scripts/update-postman-collection.ps1` so the collection overview survives future regeneration.
 - The guide now gives a numbered API execution order from health checks through auth, profile, admin review, offers, revisions, queries, announcements, grids, dashboards, audit logs, auth recovery, and negative security tests.
 
+## 2026-05-19 - Final Documentation Alignment
+
+### Documentation Updated
+
+- Updated `documentation/architecture.md` with the current backend modules and API coverage.
+- Updated `documentation/models.md` to include `AuthToken` and `AuthTokenType`.
+- Updated `documentation/database-schema.md` for `AuthToken`, query acceptance, and a clean relationship summary.
+- Updated `documentation/database-erd.svg` to show query acceptance and auth tokens.
+- Marked `plans/Simplified_Solution.md` as an external/reference document rather than the current implementation contract.
+- Filled `documentation/setup.md` prerequisites for Node `22.x`, pnpm `10.18.0`, Supabase/Postgres, and `.env`.
+- Clarified `documentation/auth-rbac.md` for the current DB-backed role middleware behavior.
+- Added auth recovery and email verification flow documentation to `documentation/flows.md`.
+- Fixed `documentation/testing.md` manual flow numbering and pointed developers to the Postman collection story.
+- Updated `plans/04_security_rbac.md` so implemented auth-token flows are not still described as future work.
+
 ## 2026-05-16 / 2026-05-17 - Developer Documentation
 
 ### Documentation Added
@@ -661,8 +667,8 @@ These documents define the initial planning baseline and keep the work anchored 
 ## Current Verification Status
 
 - `corepack pnpm prisma:generate` passed after the Query model rename.
-- `corepack pnpm prisma:migrate` currently fails during shadow-database replay because older migration `20260516195827_schema_update` references the earlier `Alert` table before the later simplified schema migration creates it.
-- `corepack pnpm prisma migrate deploy` passed; the real database has no pending migrations.
+- Migration history was cleaned to the current baseline plus later auth-token and query-acceptance migrations.
+- `corepack pnpm prisma migrate deploy` passed after the clean baseline reset.
 - `corepack pnpm prisma:seed` passed and seeds `query_category`.
 - `corepack pnpm lint` passed.
 - `corepack pnpm build` passed.
@@ -692,7 +698,9 @@ Earlier verification before the Query slice:
 
 These files should not be committed unless deliberately needed:
 
-- `admin-debug.cookies`
+- `audit_report_gaza40`
+- `plans/audit_report_gaza40`
+- `*.cookies`
 - `error.txt`
 
 `Simplified_Solution.md` is optional reference material. Commit it only if the team wants to keep that external planning reference in the repo.
