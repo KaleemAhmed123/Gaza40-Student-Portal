@@ -36,3 +36,5 @@
 - Record development steps in detail: files changed, APIs added, functions added, utilities added, middleware added, schemas/models added, and important implementation decisions.
 - Do not paste code snippets into the audit. Track names, behavior, and purpose instead.
 - The audit file may become large. Keep it chronological so agent-made code changes can be reviewed later.
+- After adding or changing API routes, request payloads, response behavior, auth requirements, or test scenarios, update `Gaza40+ API.postman_collection.json` in the same turn.
+- Prefer updating `scripts/update-postman-collection.ps1` and regenerating the collection instead of hand-editing Postman JSON.

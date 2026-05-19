@@ -1,6 +1,260 @@
 $collectionPath = "Gaza40+ API.postman_collection.json"
 $collection = Get-Content -Raw $collectionPath | ConvertFrom-Json
 
+$collection.info.description = @'
+# Gaza40+ API Full Testing Story
+
+Run the collection in this order to test the complete backend flow. This is written as a story, not as feature notes.
+
+## Setup Once
+
+1. Start API: `corepack pnpm dev`
+2. Seed DB if needed:
+   - `corepack pnpm prisma:seed`
+   - `corepack pnpm prisma:seed:admin`
+   - `corepack pnpm prisma:seed:regional-admin`
+3. Set collection variable `baseUrl` to `http://localhost:4000`.
+
+## Story 1: Basic Server Check
+
+1. `00 Health / Health`
+2. `00 Health / Health DB`
+
+## Story 2: Create The Main Test Users
+
+1. `01 Auth / Register Student`
+   - Captures `studentCookies`.
+   - If student already exists, run `01 Auth / Login Student`.
+
+2. `01 Auth / Register Volunteer`
+   - Captures `volunteerCookies`.
+   - If volunteer already exists, run `01 Auth / Login Volunteer`.
+
+3. `01 Auth / Login Master Admin`
+   - Captures `adminCookies`.
+
+4. `01 Auth / Login Regional Admin`
+   - Captures `regionalCookies`.
+
+5. Optional check: `01 Auth / Get Current User`
+
+## Story 3: Student Completes And Submits Profile
+
+1. `04 Student Profile / Get My Profile`
+
+2. `04 Student Profile / Update My Profile`
+
+3. Optional document testing:
+   - `03 Documents / Upload Document`
+   - Upload `consent_form`.
+   - Run it again and upload `national_id`.
+
+4. `04 Student Profile / Submit My Profile`
+   - Current shortcut: profile document gate is temporarily bypassed, so submission can work without documents.
+   - When production gate is restored, documents must be uploaded before this step.
+
+5. `04 Student Profile / Get My Profile`
+   - Confirm status is `under_review`.
+
+## Story 4: Master Admin Reviews Student Profile
+
+1. `06 Admin Student Profile Review / List Student Profiles`
+   - Find the submitted profile.
+   - Copy profile id into the profile review request path.
+
+2. `06 Admin Student Profile Review / Get Student Profile`
+
+3. `06 Admin Student Profile Review / Review Student Profile`
+   - Use body `{ "status": "approved", "notes": "Profile reviewed and approved." }`.
+
+4. Student can now create offers.
+
+## Story 5: Student Creates And Submits Offer
+
+1. `05 Student Offers / Create Offer`
+   - Copy returned offer id into collection variable `offerId`.
+
+2. `05 Student Offers / Get Offer`
+
+3. `03 Documents / Upload Document`
+   - Set `documentType=offer_letter`.
+   - Set `offerId={{offerId}}`.
+   - Pick a PDF/JPG/PNG file.
+
+4. If offer body has scholarship enabled:
+   - Run `03 Documents / Upload Document` again.
+   - Set `documentType=scholarship_letter`.
+   - Keep `offerId={{offerId}}`.
+
+5. `05 Student Offers / Submit Offer`
+
+6. `05 Student Offers / List My Offers`
+   - Confirm offer is `under_review`.
+
+## Story 6: Admin Reviews Offer
+
+1. `07 Admin Offer Review / List Offers (Admin)`
+
+2. `07 Admin Offer Review / Get Offer (Admin)`
+
+3. `07 Admin Offer Review / Review Offer - Approve`
+
+4. `05 Student Offers / List My Offers`
+   - Confirm offer is approved from student side.
+
+## Story 7: Edited Approved Offer Goes Back Under Review
+
+1. `05 Student Offers / Update Offer`
+   - Change a visible field, such as `offerType`, `tuitionFeePerYear`, or `conditions`.
+
+2. `05 Student Offers / Get Offer`
+   - Confirm status moved back to `under_review`.
+
+3. `07 Admin Offer Review / Get Offer Revisions (Admin)`
+   - Confirm changed fields are listed.
+
+4. `07 Admin Offer Review / Review Offer - Approve`
+   - Approve the revised offer again.
+
+## Story 8: Student Raises Query And Mentor Resolves It
+
+1. `08 Queries / Ticketing / Create General Query`
+   - Copy returned query id into `queryId`.
+
+2. `08 Queries / Ticketing / List My Queries`
+
+3. `09 Admin Queries / List Queries (Admin)`
+
+4. `14 Admin Volunteers Grid / List All Volunteers (Master Admin)`
+   - Copy a mentor/volunteer user id into `mentorId`.
+
+5. `09 Admin Queries / Assign Query To Mentor`
+   - Uses `queryId` and `mentorId`.
+
+6. `10 Mentor Queries / List Assigned Queries (Mentor)`
+
+7. `10 Mentor Queries / Accept Assigned Query (Mentor)`
+
+8. `10 Mentor Queries / Add Query Message (Mentor)`
+
+9. `08 Queries / Ticketing / Add Query Message`
+   - Student replies.
+
+10. `09 Admin Queries / Add Query Message (Admin)`
+    - Admin can also reply.
+
+11. `10 Mentor Queries / Resolve Query (Mentor)`
+
+12. `08 Queries / Ticketing / Get My Query`
+    - Confirm query is resolved.
+
+## Story 9: Announcements
+
+1. `12 Admin Announcements / Create Announcement`
+   - Create a published announcement.
+   - Copy announcement id into `announcementId`.
+
+2. `11 Announcements / List Announcements`
+   - Student/mentor/admin can read published announcements.
+
+3. `12 Admin Announcements / Update Announcement`
+
+4. `12 Admin Announcements / Delete Announcement`
+
+## Story 10: Admin Grids, Filters, Summaries, And Exports
+
+1. `13 Admin Students Grid / List All Students (Master Admin)`
+   - Check students and summary counts.
+
+2. `13 Admin Students Grid / Combined Student Filters With Pagination`
+
+3. `13 Admin Students Grid / Export Students CSV (Master Admin)`
+
+4. `14 Admin Volunteers Grid / List All Volunteers (Master Admin)`
+   - Check volunteers and summary counts.
+
+5. `14 Admin Volunteers Grid / Update Volunteer Assignment (Master Admin)`
+
+6. `14 Admin Volunteers Grid / Export Volunteers CSV (Master Admin)`
+
+7. `07 Admin Offer Review / List Offers (Admin)`
+   - Check offer summaries.
+
+8. `07 Admin Offer Review / Export Offers CSV (Master Admin)`
+
+Important: CSV exports must not expose public document URLs. Sensitive file references should stay as document IDs or protected download paths.
+
+## Story 11: Regional Admin Scoped Access
+
+1. `07 Admin Offer Review / Regional Admin Offers`
+   - Should show only the regional admin's region.
+
+2. `13 Admin Students Grid / Regional Admin Students`
+   - Should show students with offers in that region.
+
+3. `14 Admin Volunteers Grid / Regional Admin Volunteers`
+   - Should show volunteers assigned/preferred for that region.
+
+4. `09 Admin Queries / List Queries (Admin)` using `regionalCookies`
+   - Should show regional queries only.
+
+## Story 12: Dashboards
+
+1. `16 Dashboards / Student Dashboard`
+2. `16 Dashboards / Admin Dashboard (Master Admin)`
+3. `16 Dashboards / Admin Dashboard (Regional Admin)`
+4. `16 Dashboards / Mentor Dashboard`
+
+## Story 13: Audit Logs
+
+1. `15 Admin Audit Logs / List Audit Logs`
+2. `15 Admin Audit Logs / Filter Audit Logs By Action`
+3. `15 Admin Audit Logs / Filter Audit Logs By Document Downloads`
+4. Copy one audit id into `auditLogId`.
+5. `15 Admin Audit Logs / Get Audit Log`
+
+## Story 14: Auth Recovery And Email Verification
+
+1. `01 Auth / Forgot Password`
+   - Copy token from email link into `resetToken`.
+
+2. `01 Auth / Reset Password`
+
+3. Login again with the new password.
+
+4. `01 Auth / Send Verification Email`
+   - Copy token from email link into `verificationToken`.
+
+5. `01 Auth / Verify Email`
+
+Resend testing may only send to allowed test recipients unless a sending domain is verified.
+
+## Story 15: Negative Security Tests
+
+Run these after the happy path:
+
+1. `99 Negative / Security Tests / Get Me - Unauthenticated`
+2. `99 Negative / Security Tests / Admin Endpoint - Student Role`
+3. `99 Negative / Security Tests / Admin Offers - Regional Admin Other Region Should Fail`
+4. `99 Negative / Security Tests / Mentor Access Unassigned Query`
+5. `99 Negative / Security Tests / Mentor Accept Unassigned Query Should Fail`
+6. `99 Negative / Security Tests / Audit Logs - Regional Admin Should Fail`
+7. `99 Negative / Security Tests / Reset Password - Invalid Token Should Fail`
+8. `99 Negative / Security Tests / Verify Email - Invalid Token Should Fail`
+
+## Variables You Will Fill While Testing
+
+- `regionId`: from `02 Config / Master Data / List Regions`
+- `otherRegionId`: region different from Regional Admin region
+- `offerId`: from `05 Student Offers / Create Offer`
+- `queryId`: from `08 Queries / Ticketing / Create General Query`
+- `mentorId`: from `14 Admin Volunteers Grid / List All Volunteers`
+- `announcementId`: from `12 Admin Announcements / Create Announcement`
+- `auditLogId`: from `15 Admin Audit Logs / List Audit Logs`
+- `resetToken`: from password reset email
+- `verificationToken`: from verification email
+'@
+
 $collection.item = @($collection.item | Where-Object {
   $_.name -ne "11 Admin Students Grid" -and
   $_.name -ne "13 Admin Students Grid" -and
@@ -160,7 +414,7 @@ $dashboardItems = @(
 Set-Folder "16 Dashboards" $dashboardItems
 
 $studentGridItems = @(
-  New-Request "List All Students (Master Admin)" "GET" "{{baseUrl}}/api/admin/students" "Master Admin: list all registered students with profile and offer summary." "{{adminCookies}}"
+  New-Request "List All Students (Master Admin)" "GET" "{{baseUrl}}/api/admin/students" "Master Admin: list all registered students with profile, offer summary, and aggregate counts." "{{adminCookies}}"
   New-Request "Search Students (Master Admin)" "GET" "{{baseUrl}}/api/admin/students?search=student" "Master Admin: search by name, email, phone, or English profile name." "{{adminCookies}}"
   New-Request "Filter Students By Profile Status" "GET" "{{baseUrl}}/api/admin/students?profileStatus=approved" "Valid profileStatus: draft, submitted, under_review, approved, changes_requested, rejected." "{{adminCookies}}"
   New-Request "Filter Students By Passport Status" "GET" "{{baseUrl}}/api/admin/students?passportStatus=valid" "Valid passportStatus: valid, valid_expires_within_year, invalid_lost_never_had_one." "{{adminCookies}}"
@@ -168,7 +422,7 @@ $studentGridItems = @(
   New-Request "Filter Students By Verified Offer" "GET" "{{baseUrl}}/api/admin/students?hasVerifiedOffer=true" "Master Admin: filter students by verified offer flag." "{{adminCookies}}"
   New-Request "Filter Students By Signed Consent" "GET" "{{baseUrl}}/api/admin/students?consentSigned=true" "Master Admin: filter students by signed consent flag." "{{adminCookies}}"
   New-Request "Combined Student Filters With Pagination" "GET" "{{baseUrl}}/api/admin/students?profileStatus=approved&locationInGaza=gaza_city&hasVerifiedOffer=true&page=1&pageSize=25" "Master Admin: combined filters and pagination." "{{adminCookies}}"
-  New-Request "Regional Admin Students" "GET" "{{baseUrl}}/api/admin/students" "Regional Admin: students with at least one offer in the admin's assigned offer/university region." "{{regionalCookies}}"
+  New-Request "Regional Admin Students" "GET" "{{baseUrl}}/api/admin/students" "Regional Admin: students with at least one offer in the admin's assigned offer/university region. Response includes scoped total summary only." "{{regionalCookies}}"
   New-Request "Regional Admin Students Search" "GET" "{{baseUrl}}/api/admin/students?search=student&page=1&pageSize=25" "Regional Admin: search within students scoped by offer/university region." "{{regionalCookies}}"
   New-Request "Export Students CSV (Master Admin)" "GET" "{{baseUrl}}/api/admin/students/export?profileStatus=approved&locationInGaza=gaza_city" "Master Admin: export filtered students CSV. Use Send and Save Response in Postman if needed." "{{adminCookies}}"
   New-Request "Export Students CSV (Regional Admin)" "GET" "{{baseUrl}}/api/admin/students/export" "Regional Admin: export students CSV scoped to students with offers in assigned offer/university region." "{{regionalCookies}}"
@@ -176,12 +430,12 @@ $studentGridItems = @(
 Set-Folder "13 Admin Students Grid" $studentGridItems
 
 $volunteerGridItems = @(
-  New-Request "List All Volunteers (Master Admin)" "GET" "{{baseUrl}}/api/admin/volunteers" "Master Admin: list all registered volunteers with roles, status, and profile summary." "{{adminCookies}}"
+  New-Request "List All Volunteers (Master Admin)" "GET" "{{baseUrl}}/api/admin/volunteers" "Master Admin: list all registered volunteers with roles, status, profile summary, and aggregate counts." "{{adminCookies}}"
   New-Request "Search Volunteers (Master Admin)" "GET" "{{baseUrl}}/api/admin/volunteers?search=volunteer" "Master Admin: search by name, email, phone, or university affiliation." "{{adminCookies}}"
   New-Request "Filter Volunteers By Status" "GET" "{{baseUrl}}/api/admin/volunteers?volunteerStatus=pending&page=1&pageSize=25" "Valid volunteerStatus: pending, approved, rejected, inactive." "{{adminCookies}}"
   New-Request "Filter Volunteers By Role" "GET" "{{baseUrl}}/api/admin/volunteers?role=mentor" "Filter volunteers/users by role. Common value: mentor." "{{adminCookies}}"
   New-Request "Filter Volunteers By Preferred Region" "GET" "{{baseUrl}}/api/admin/volunteers?preferredRegionId={{regionId}}" "Master Admin: filter by VolunteerProfile.preferredRegionId." "{{adminCookies}}"
-  New-Request "Regional Admin Volunteers" "GET" "{{baseUrl}}/api/admin/volunteers" "Regional Admin: volunteers whose preferredRegionId matches the admin's assigned offer/university region." "{{regionalCookies}}"
+  New-Request "Regional Admin Volunteers" "GET" "{{baseUrl}}/api/admin/volunteers" "Regional Admin: volunteers whose preferredRegionId matches the admin's assigned offer/university region. Response includes scoped aggregate counts." "{{regionalCookies}}"
   New-Request "Export Volunteers CSV (Master Admin)" "GET" "{{baseUrl}}/api/admin/volunteers/export?volunteerStatus=pending" "Master Admin: export filtered volunteers CSV. Use Send and Save Response in Postman if needed." "{{adminCookies}}"
   New-Request "Export Volunteers CSV (Regional Admin)" "GET" "{{baseUrl}}/api/admin/volunteers/export" "Regional Admin: export volunteers CSV scoped to preferred region." "{{regionalCookies}}"
   New-Request "Update Volunteer Assignment (Master Admin)" "PATCH" "{{baseUrl}}/api/admin/volunteers/{{volunteerId}}/assignment" "Master Admin: assign preferred region, approve volunteer, and ensure mentor role is enabled." "{{adminCookies}}" "{`n  `"preferredRegionId`": `"{{regionId}}`",`n  `"volunteerStatus`": `"approved`",`n  `"mentorEnabled`": true`n}"
