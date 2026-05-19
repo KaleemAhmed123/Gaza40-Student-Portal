@@ -13,6 +13,14 @@ type AdminScope =
   | { role: "master_admin"; regionId?: never }
   | { role: "regional_admin"; regionId: string };
 
+function addCount(summary: Record<string, number>, key?: string | null) {
+  if (!key) {
+    return;
+  }
+
+  summary[key] = (summary[key] ?? 0) + 1;
+}
+
 async function getAdminScope(userId: string): Promise<AdminScope> {
   const user = await prisma.user.findFirst({
     where: {
@@ -95,7 +103,7 @@ export async function listAdminVolunteers(userId: string, query: ListAdminVolunt
     };
   }
 
-  const [volunteers, total] = await prisma.$transaction([
+  const [volunteers, total, summaryVolunteers] = await prisma.$transaction([
     prisma.user.findMany({
       where,
       select: {
@@ -138,8 +146,35 @@ export async function listAdminVolunteers(userId: string, query: ListAdminVolunt
       skip,
       take
     }),
-    prisma.user.count({ where })
+    prisma.user.count({ where }),
+    prisma.user.findMany({
+      where,
+      select: {
+        roles: true,
+        volunteerProfile: {
+          select: {
+            volunteerStatus: true,
+            preferredRegionId: true
+          }
+        }
+      }
+    })
   ]);
+
+  const summary = {
+    total,
+    byVolunteerStatus: {} as Record<string, number>,
+    byRole: {} as Record<string, number>,
+    byPreferredRegionId: {} as Record<string, number>
+  };
+
+  for (const volunteer of summaryVolunteers) {
+    addCount(summary.byVolunteerStatus, volunteer.volunteerProfile?.volunteerStatus);
+    addCount(summary.byPreferredRegionId, volunteer.volunteerProfile?.preferredRegionId);
+    for (const role of volunteer.roles) {
+      addCount(summary.byRole, role);
+    }
+  }
 
   return {
     scope,
@@ -155,6 +190,7 @@ export async function listAdminVolunteers(userId: string, query: ListAdminVolunt
       profile: volunteer.volunteerProfile,
       regionalAdminProfile: volunteer.regionalAdminProfile
     })),
+    summary,
     pagination: { page: query.page, pageSize: query.pageSize, total }
   };
 }

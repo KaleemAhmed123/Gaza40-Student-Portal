@@ -10,6 +10,14 @@ type AdminScope =
   | { role: "master_admin"; regionId?: never }
   | { role: "regional_admin"; regionId: string };
 
+function addCount(summary: Record<string, number>, key?: string | null) {
+  if (!key) {
+    return;
+  }
+
+  summary[key] = (summary[key] ?? 0) + 1;
+}
+
 async function getAdminScope(userId: string): Promise<AdminScope> {
   const user = await prisma.user.findFirst({
     where: {
@@ -142,12 +150,15 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
         offerCountInRegion: student.studentOffers.length,
         offers: student.studentOffers
       })),
+      summary: {
+        total
+      },
       pagination: { page: query.page, pageSize: query.pageSize, total }
     };
   }
 
   const where = buildMasterWhere(query);
-  const [students, total] = await prisma.$transaction([
+  const [students, total, summaryStudents] = await prisma.$transaction([
     prisma.user.findMany({
       where,
       select: {
@@ -197,8 +208,40 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
       skip,
       take
     }),
-    prisma.user.count({ where })
+    prisma.user.count({ where }),
+    prisma.user.findMany({
+      where,
+      select: {
+        studentProfile: {
+          select: {
+            profileStatus: true,
+            passportStatus: true,
+            locationInGaza: true,
+            consentSigned: true,
+            hasVerifiedOffer: true
+          }
+        }
+      }
+    })
   ]);
+
+  const summary = {
+    total,
+    byProfileStatus: {} as Record<string, number>,
+    byPassportStatus: {} as Record<string, number>,
+    byLocationInGaza: {} as Record<string, number>,
+    consentSigned: { true: 0, false: 0 },
+    hasVerifiedOffer: { true: 0, false: 0 }
+  };
+
+  for (const student of summaryStudents) {
+    const profile = student.studentProfile;
+    addCount(summary.byProfileStatus, profile?.profileStatus);
+    addCount(summary.byPassportStatus, profile?.passportStatus);
+    addCount(summary.byLocationInGaza, profile?.locationInGaza);
+    summary.consentSigned[String(Boolean(profile?.consentSigned)) as "true" | "false"] += 1;
+    summary.hasVerifiedOffer[String(Boolean(profile?.hasVerifiedOffer)) as "true" | "false"] += 1;
+  }
 
   return {
     scope,
@@ -214,6 +257,7 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
       offerCount: student.studentOffers.length,
       offers: student.studentOffers
     })),
+    summary,
     pagination: { page: query.page, pageSize: query.pageSize, total }
   };
 }

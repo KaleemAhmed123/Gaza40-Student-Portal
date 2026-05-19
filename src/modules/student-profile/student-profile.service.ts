@@ -147,8 +147,11 @@ export async function submitMyStudentProfile(input: {
 
   const missingDocuments: string[] = [];
 
-  // Temporarily disabled for faster API testing. Re-enable before production because
-  // the SRS requires profile documents and signed consent before submission.
+  // SERIOUS TEMPORARY TESTING BYPASS:
+  // Required profile-document checks are disabled only to speed manual API testing.
+  // This is not MVP-correct and must be re-enabled before production/demo sign-off.
+  // The SRS requires national ID, signed consent, conditional MOI letter, and
+  // conditional passport document before profile submission.
   // const activeDocumentTypes = await getActiveDocumentTypes(profile.id);
   // if (!activeDocumentTypes.has(DocumentType.national_id)) {
   //   missingDocuments.push(DocumentType.national_id);
