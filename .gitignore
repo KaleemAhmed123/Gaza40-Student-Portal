@@ -3,4 +3,7 @@ dist/
 .env
 uploads/
 *.log
-plans
+*.cookies
+admin-debug.cookies
+error.txt
+audit_report_gaza40
