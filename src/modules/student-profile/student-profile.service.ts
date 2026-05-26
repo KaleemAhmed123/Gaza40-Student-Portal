@@ -147,28 +147,23 @@ export async function submitMyStudentProfile(input: {
 
   const missingDocuments: string[] = [];
 
-  // SERIOUS TEMPORARY TESTING BYPASS:
-  // Required profile-document checks are disabled only to speed manual API testing.
-  // This is not MVP-correct and must be re-enabled before production/demo sign-off.
-  // The SRS requires national ID, signed consent, conditional MOI letter, and
-  // conditional passport document before profile submission.
-  // const activeDocumentTypes = await getActiveDocumentTypes(profile.id);
-  // if (!activeDocumentTypes.has(DocumentType.national_id)) {
-  //   missingDocuments.push(DocumentType.national_id);
-  // }
-  // if (!activeDocumentTypes.has(DocumentType.consent_form)) {
-  //   missingDocuments.push(DocumentType.consent_form);
-  // }
-  // if (profile.englishMoi && !activeDocumentTypes.has(DocumentType.moi_letter)) {
-  //   missingDocuments.push(DocumentType.moi_letter);
-  // }
-  // if (
-  //   profile.passportStatus &&
-  //   passportRequiresDocument.has(profile.passportStatus) &&
-  //   !activeDocumentTypes.has(DocumentType.passport)
-  // ) {
-  //   missingDocuments.push(DocumentType.passport);
-  // }
+  const activeDocumentTypes = await getActiveDocumentTypes(profile.id);
+  if (!activeDocumentTypes.has(DocumentType.national_id)) {
+    missingDocuments.push(DocumentType.national_id);
+  }
+  if (!activeDocumentTypes.has(DocumentType.consent_form)) {
+    missingDocuments.push(DocumentType.consent_form);
+  }
+  if (profile.englishMoi && !activeDocumentTypes.has(DocumentType.moi_letter)) {
+    missingDocuments.push(DocumentType.moi_letter);
+  }
+  if (
+    profile.passportStatus &&
+    passportRequiresDocument.has(profile.passportStatus) &&
+    !activeDocumentTypes.has(DocumentType.passport)
+  ) {
+    missingDocuments.push(DocumentType.passport);
+  }
 
   if (missingFields.length > 0 || missingDocuments.length > 0) {
     throw new ApiError(

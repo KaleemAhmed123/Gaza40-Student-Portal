@@ -63,6 +63,10 @@ curl.exe -i -c student.cookies -X POST http://localhost:4000/api/auth/login `
   -d '{"email":"student1@example.com","password":"Password123!"}'
 ```
 
+Auth responses return `{ data: { user } }`. The user object includes `id`, `email`, `fullName`,
+`phone`, `roles`, `accountStatus`, `emailVerifiedAt`, and any role-specific profile summary:
+`studentProfile`, `volunteerProfile`, or `regionalAdminProfile`.
+
 ### `POST /api/auth/logout`
 
 Clears the auth cookie.
@@ -73,7 +77,7 @@ curl.exe -i -b student.cookies -X POST http://localhost:4000/api/auth/logout
 
 ### `GET /api/auth/me`
 
-Returns the current authenticated user.
+Returns the current authenticated user with the same enriched user shape used by login and registration.
 
 ```powershell
 curl.exe -i -b student.cookies http://localhost:4000/api/auth/me
@@ -191,7 +195,10 @@ curl.exe -i -b student.cookies -X PATCH http://localhost:4000/api/student/profil
 
 ### `POST /api/student/profile/me/submit`
 
-Submits the current student's profile for Master Admin review.
+Submits the current student's profile for Master Admin review. The API requires all mandatory
+profile fields plus active `national_id` and `consent_form` documents. It also requires a
+`moi_letter` when `englishMoi=true`, and a `passport` document when the passport status is
+`valid` or `valid_expires_within_year`.
 
 ```powershell
 curl.exe -i -b student.cookies -X POST http://localhost:4000/api/student/profile/me/submit

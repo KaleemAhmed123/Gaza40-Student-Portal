@@ -54,7 +54,7 @@
 
 ## Known Architecture Limits
 
-- Profile required-document gate is temporarily bypassed for API testing.
+- Profile submission requires mandatory documents before review.
 - Local private uploads are development/demo storage only.
 - CSRF middleware is deferred until frontend integration.
 - University Processes and Scholarship Processes tabs are intentionally deferred.

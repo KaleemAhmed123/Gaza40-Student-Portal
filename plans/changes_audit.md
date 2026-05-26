@@ -704,3 +704,52 @@ These files should not be committed unless deliberately needed:
 - `error.txt`
 
 `Simplified_Solution.md` is optional reference material. Commit it only if the team wants to keep that external planning reference in the repo.
+
+## 2026-05-26 - Auth Session Payload Enrichment
+
+### Files Updated
+
+- `src/modules/auth/auth.service.ts`
+- `documentation/api.md`
+- `plans/changes_audit.md`
+
+### Behavior Updated
+
+- Enriched auth user responses from register, login, and `GET /api/auth/me`.
+- Auth responses now include display and integration fields needed by a separate frontend:
+  - `fullName`
+  - `phone`
+  - `accountStatus`
+  - `emailVerifiedAt`
+  - `studentProfile`
+  - `volunteerProfile`
+  - `regionalAdminProfile`
+- Kept the JWT payload minimal. The cookie token still signs only identity and role claims needed by backend middleware.
+
+### Notes
+
+- No new frontend-specific routes were added.
+- The frontend should adapt to backend role names and the existing `{ data: ... }` response envelope instead of the backend duplicating routes for prototype naming.
+
+## 2026-05-26 - Profile Document Submission Gate Restored
+
+### Files Updated
+
+- `src/modules/student-profile/student-profile.service.ts`
+- `documentation/api.md`
+- `documentation/architecture.md`
+- `documentation/mvp-gaps.md`
+- `documentation/testing.md`
+- `scripts/update-postman-collection.ps1`
+- `plans/changes_audit.md`
+
+### Behavior Updated
+
+- Re-enabled required profile document validation before `POST /api/student/profile/me/submit`.
+- Profile submission now requires active `national_id` and `consent_form` documents.
+- Profile submission requires `moi_letter` when `englishMoi=true`.
+- Profile submission requires `passport` when passport status is `valid` or `valid_expires_within_year`.
+
+### Notes
+
+- This intentionally shifts integration responsibility to the frontend: the onboarding flow must upload documents through `POST /api/documents` before submitting the profile for review.

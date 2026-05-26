@@ -37,6 +37,7 @@ Run the collection in this order to test the complete backend flow. This is writ
    - Captures `regionalCookies`.
 
 5. Optional check: `01 Auth / Get Current User`
+   - Auth responses return an enriched user object for frontend session bootstrapping: display fields, roles, account status, email verification status, and role-specific profile summaries.
 
 ## Story 3: Student Completes And Submits Profile
 
@@ -50,8 +51,7 @@ Run the collection in this order to test the complete backend flow. This is writ
    - Run it again and upload `national_id`.
 
 4. `04 Student Profile / Submit My Profile`
-   - Current shortcut: profile document gate is temporarily bypassed, so submission can work without documents.
-   - When production gate is restored, documents must be uploaded before this step.
+   - Required profile documents must be uploaded before this step.
 
 5. `04 Student Profile / Get My Profile`
    - Confirm status is `under_review`.

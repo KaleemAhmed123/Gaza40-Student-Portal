@@ -94,7 +94,46 @@ async function consumeAuthToken(input: { token: string; type: AuthTokenType }) {
 
 async function buildAuthUser(userId: string) {
   const user = await prisma.user.findUnique({
-    where: { id: userId }
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      phone: true,
+      roles: true,
+      accountStatus: true,
+      emailVerifiedAt: true,
+      studentProfile: {
+        select: {
+          id: true,
+          profileStatus: true,
+          hasOfferSelfReported: true,
+          hasVerifiedOffer: true
+        }
+      },
+      volunteerProfile: {
+        select: {
+          id: true,
+          volunteerStatus: true,
+          universityAffiliation: true,
+          preferredRegionId: true
+        }
+      },
+      regionalAdminProfile: {
+        select: {
+          id: true,
+          regionId: true,
+          status: true,
+          region: {
+            select: {
+              code: true,
+              name: true
+            }
+          }
+        }
+      },
+      deletedAt: true
+    }
   });
 
   if (!user || user.deletedAt || user.accountStatus === "disabled") {
@@ -104,7 +143,14 @@ async function buildAuthUser(userId: string) {
   return {
     id: user.id,
     email: user.email,
-    roles: user.roles
+    fullName: user.fullName,
+    phone: user.phone,
+    roles: user.roles,
+    accountStatus: user.accountStatus,
+    emailVerifiedAt: user.emailVerifiedAt,
+    studentProfile: user.studentProfile,
+    volunteerProfile: user.volunteerProfile,
+    regionalAdminProfile: user.regionalAdminProfile
   };
 }
 

@@ -52,9 +52,8 @@ curl.exe -i -b student.cookies http://localhost:4000/api/auth/me
 - Get current profile.
 - Patch draft profile.
 - Submit profile and confirm status becomes `under_review`.
-- Current testing note: required profile-document checks are temporarily bypassed to speed API testing.
-- When the document gate is re-enabled, submit without required documents must fail.
-- Upload consent and national ID to test document upload behavior even while the gate is bypassed.
+- Submit without required profile documents must fail.
+- Upload consent and national ID before a successful submission.
 - Confirm approved profile cannot be edited through draft update.
 
 ```powershell
@@ -169,8 +168,8 @@ curl.exe -i -b student.cookies -X POST http://localhost:4000/api/admin/config/op
 1. Start API.
 2. Register student and keep cookies in `student.cookies`.
 3. Patch student profile.
-4. Optionally upload `consent_form` and `national_id` to test file upload behavior.
-5. Submit profile. Required profile-document checks are temporarily bypassed during current API testing.
+4. Upload `consent_form` and `national_id` before profile submission.
+5. Submit profile.
 6. Seed the development Master Admin.
 7. Login admin and keep cookies in `admin.cookies`.
 8. List under-review profiles.

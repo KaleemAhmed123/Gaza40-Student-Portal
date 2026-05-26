@@ -4,20 +4,6 @@ This document tracks what is not fully production-ready yet. `vision/requirement
 
 ## Intentional MVP Gaps
 
-### Profile Document Gate
-
-Current state:
-- `POST /api/student/profile/me/submit` validates profile fields.
-- Required document checks are temporarily disabled for manual API testing.
-
-Why this matters:
-- The SRS requires signed consent and required documents before profile submission.
-
-Before production/demo sign-off:
-- Re-enable checks for `national_id` and `consent_form`.
-- Require `moi_letter` when `englishMoi=true`.
-- Require `passport` when passport status is `valid` or `valid_expires_within_year`.
-
 ### Local File Storage
 
 Current state:
@@ -87,7 +73,6 @@ Before full MVP release:
 - Rotate any secrets that were pasted into chat or shared outside `.env`.
 - Commit Prisma migrations intentionally.
 - Commit developer documentation intentionally.
-- Re-enable profile document gate.
 - Use private object storage for uploaded files.
 - Verify Resend sending domain.
 - Set `NODE_ENV=production`.
@@ -100,7 +85,7 @@ Before full MVP release:
 
 ## Current Backend MVP Confidence
 
-Approximate status: 92-93% API-complete.
+Approximate status: 93-94% API-complete.
 
 Reason:
 - Core auth, profile, offers, documents, admin review, regional scoping, queries, announcements, exports, dashboards, audit logs, and email hooks exist.
