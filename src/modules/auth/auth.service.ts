@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import { AuthTokenType, RoleCode } from "@prisma/client";
+import { AuthTokenType, Prisma, RoleCode } from "@prisma/client";
 import { env } from "../../config/env";
 import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
@@ -28,6 +28,51 @@ type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 const passwordSaltRounds = 12;
 const passwordResetExpiryMs = 60 * 60 * 1000;
 const emailVerificationExpiryMs = 24 * 60 * 60 * 1000;
+
+const authUserBaseSelect = {
+  id: true,
+  email: true,
+  fullName: true,
+  phone: true,
+  roles: true,
+  accountStatus: true,
+  emailVerifiedAt: true,
+  deletedAt: true
+} satisfies Prisma.UserSelect;
+
+const studentAuthProfileSelect = {
+  id: true,
+  profileStatus: true,
+  hasOfferSelfReported: true,
+  hasVerifiedOffer: true
+} satisfies Prisma.StudentProfileSelect;
+
+const volunteerAuthProfileSelect = {
+  id: true,
+  volunteerStatus: true,
+  universityAffiliation: true,
+  preferredRegionId: true
+} satisfies Prisma.VolunteerProfileSelect;
+
+const regionalAdminAuthProfileSelect = {
+  id: true,
+  regionId: true,
+  status: true,
+  region: {
+    select: {
+      code: true,
+      name: true
+    }
+  }
+} satisfies Prisma.RegionalAdminProfileSelect;
+
+const loginUserSelect = {
+  ...authUserBaseSelect,
+  passwordHash: true
+} satisfies Prisma.UserSelect;
+
+type AuthUserRecord = Prisma.UserGetPayload<{ select: typeof authUserBaseSelect }>;
+type LoginUserRecord = Prisma.UserGetPayload<{ select: typeof loginUserSelect }>;
 
 function createRawToken() {
   return crypto.randomBytes(32).toString("hex");
@@ -92,66 +137,58 @@ async function consumeAuthToken(input: { token: string; type: AuthTokenType }) {
   return authToken;
 }
 
-async function buildAuthUser(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      email: true,
-      fullName: true,
-      phone: true,
-      roles: true,
-      accountStatus: true,
-      emailVerifiedAt: true,
-      studentProfile: {
-        select: {
-          id: true,
-          profileStatus: true,
-          hasOfferSelfReported: true,
-          hasVerifiedOffer: true
-        }
-      },
-      volunteerProfile: {
-        select: {
-          id: true,
-          volunteerStatus: true,
-          universityAffiliation: true,
-          preferredRegionId: true
-        }
-      },
-      regionalAdminProfile: {
-        select: {
-          id: true,
-          regionId: true,
-          status: true,
-          region: {
-            select: {
-              code: true,
-              name: true
-            }
-          }
-        }
-      },
-      deletedAt: true
-    }
-  });
-
+function assertValidAuthUser(user: AuthUserRecord | LoginUserRecord | null) {
   if (!user || user.deletedAt || user.accountStatus === "disabled") {
     throw new ApiError(401, "Invalid user account");
   }
 
+  return user;
+}
+
+async function toAuthUser(user: AuthUserRecord | LoginUserRecord | null) {
+  const validUser = assertValidAuthUser(user);
+  const [studentProfile, volunteerProfile, regionalAdminProfile] = await Promise.all([
+    validUser.roles.includes(RoleCode.student)
+      ? prisma.studentProfile.findUnique({
+          where: { userId: validUser.id },
+          select: studentAuthProfileSelect
+        })
+      : Promise.resolve(null),
+    validUser.roles.includes(RoleCode.mentor)
+      ? prisma.volunteerProfile.findUnique({
+          where: { userId: validUser.id },
+          select: volunteerAuthProfileSelect
+        })
+      : Promise.resolve(null),
+    validUser.roles.includes(RoleCode.regional_admin)
+      ? prisma.regionalAdminProfile.findUnique({
+          where: { userId: validUser.id },
+          select: regionalAdminAuthProfileSelect
+        })
+      : Promise.resolve(null)
+  ]);
+
   return {
-    id: user.id,
-    email: user.email,
-    fullName: user.fullName,
-    phone: user.phone,
-    roles: user.roles,
-    accountStatus: user.accountStatus,
-    emailVerifiedAt: user.emailVerifiedAt,
-    studentProfile: user.studentProfile,
-    volunteerProfile: user.volunteerProfile,
-    regionalAdminProfile: user.regionalAdminProfile
+    id: validUser.id,
+    email: validUser.email,
+    fullName: validUser.fullName,
+    phone: validUser.phone,
+    roles: validUser.roles,
+    accountStatus: validUser.accountStatus,
+    emailVerifiedAt: validUser.emailVerifiedAt,
+    studentProfile,
+    volunteerProfile,
+    regionalAdminProfile
   };
+}
+
+async function buildAuthUser(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: authUserBaseSelect
+  });
+
+  return toAuthUser(user);
 }
 
 export async function registerStudent(input: RegisterStudentInput) {
@@ -206,7 +243,10 @@ export async function registerVolunteer(input: RegisterVolunteerInput) {
 }
 
 export async function login(input: LoginInput) {
-  const user = await prisma.user.findUnique({ where: { email: input.email } });
+  const user = await prisma.user.findUnique({
+    where: { email: input.email },
+    select: loginUserSelect
+  });
   if (!user || user.deletedAt) {
     throw new ApiError(401, "Invalid email or password");
   }
@@ -216,12 +256,17 @@ export async function login(input: LoginInput) {
     throw new ApiError(401, "Invalid email or password");
   }
 
-  await prisma.user.update({
+  void prisma.user.update({
     where: { id: user.id },
-    data: { lastLoginAt: new Date() }
+    data: { lastLoginAt: new Date() },
+    select: { id: true }
+  }).catch((error) => {
+    console.error(
+      `Failed to update last login timestamp: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
   });
 
-  return buildAuthUser(user.id);
+  return toAuthUser(user);
 }
 
 export async function getCurrentUser(userId: string) {
