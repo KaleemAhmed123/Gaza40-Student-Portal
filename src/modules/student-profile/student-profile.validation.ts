@@ -19,6 +19,7 @@ export const updateStudentProfileSchema = z.object({
   emergencyContactFirstName: z.string().min(1).optional(),
   emergencyContactRelation: z.string().min(1).optional(),
   emergencyContactPhone: z.string().min(1).optional(),
+  consentSigned: z.boolean().optional(),
   englishMoi: z.boolean().optional(),
   bachelorUniGaza: z.string().min(1).optional(),
   englishWorkplaceCertificatePossible: z.boolean().optional(),

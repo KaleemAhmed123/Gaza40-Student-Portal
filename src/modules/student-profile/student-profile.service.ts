@@ -1,4 +1,4 @@
-import { DocumentStatus, DocumentType, PassportStatus, ProfileStatus } from "@prisma/client";
+import { DocumentStatus, DocumentType, PassportStatus, ProfileStatus, RoleCode } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
 import { ApiError } from "../../shared/http";
@@ -44,7 +44,70 @@ export async function getStudentProfileByUserId(userId: string) {
     }
   });
 
-  if (!profile || profile.deletedAt) {
+  if (profile?.deletedAt) {
+    return prisma.studentProfile.update({
+      where: { id: profile.id },
+      data: { deletedAt: null },
+      include: {
+        documents: {
+          where: {
+            status: DocumentStatus.active,
+            deletedAt: null
+          },
+          select: {
+            id: true,
+            documentType: true,
+            originalFilename: true,
+            mimeType: true,
+            fileSizeBytes: true,
+            createdAt: true
+          },
+          orderBy: { createdAt: "desc" }
+        }
+      }
+    });
+  }
+
+  if (!profile) {
+    const user = await prisma.user.findFirst({
+      where: {
+        id: userId,
+        deletedAt: null,
+        roles: { has: RoleCode.student }
+      },
+      select: { id: true }
+    });
+
+    if (!user) {
+      throw new ApiError(404, "Student profile not found");
+    }
+
+    return prisma.studentProfile.create({
+      data: {
+        userId,
+        hasOfferSelfReported: false
+      },
+      include: {
+        documents: {
+          where: {
+            status: DocumentStatus.active,
+            deletedAt: null
+          },
+          select: {
+            id: true,
+            documentType: true,
+            originalFilename: true,
+            mimeType: true,
+            fileSizeBytes: true,
+            createdAt: true
+          },
+          orderBy: { createdAt: "desc" }
+        }
+      }
+    });
+  }
+
+  if (!profile) {
     throw new ApiError(404, "Student profile not found");
   }
 
@@ -123,6 +186,7 @@ export async function submitMyStudentProfile(input: {
   requireProfileField(profile.emergencyContactFirstName, "emergencyContactFirstName", missingFields);
   requireProfileField(profile.emergencyContactRelation, "emergencyContactRelation", missingFields);
   requireProfileField(profile.emergencyContactPhone, "emergencyContactPhone", missingFields);
+  requireProfileField(profile.consentSigned, "consentSigned", missingFields);
   requireProfileField(profile.englishMoi, "englishMoi", missingFields);
   requireProfileField(
     profile.englishWorkplaceCertificatePossible,
@@ -148,12 +212,6 @@ export async function submitMyStudentProfile(input: {
   const missingDocuments: string[] = [];
 
   const activeDocumentTypes = await getActiveDocumentTypes(profile.id);
-  if (!activeDocumentTypes.has(DocumentType.national_id)) {
-    missingDocuments.push(DocumentType.national_id);
-  }
-  if (!activeDocumentTypes.has(DocumentType.consent_form)) {
-    missingDocuments.push(DocumentType.consent_form);
-  }
   if (profile.englishMoi && !activeDocumentTypes.has(DocumentType.moi_letter)) {
     missingDocuments.push(DocumentType.moi_letter);
   }
