@@ -78,3 +78,31 @@ export function requireActiveDbRole(roleCode: RoleCode) {
       .catch(next);
   };
 }
+
+export function requireAnyActiveDbRole(roleCodes: RoleCode[]) {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    if (!req.authUser) {
+      next(new ApiError(401, "Authentication required"));
+      return;
+    }
+
+    prisma.user
+      .findFirst({
+        where: {
+          id: req.authUser.id,
+          deletedAt: null,
+          accountStatus: "active",
+          roles: { hasSome: roleCodes }
+        }
+      })
+      .then((activeUser) => {
+        if (!activeUser) {
+          next(new ApiError(403, "You do not have permission to access this resource"));
+          return;
+        }
+
+        next();
+      })
+      .catch(next);
+  };
+}
