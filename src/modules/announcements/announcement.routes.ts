@@ -1,6 +1,6 @@
 import { RoleCode } from "@prisma/client";
 import { Router } from "express";
-import { requireActiveDbRole, requireAuth } from "../../middleware/auth.middleware";
+import { requireAnyActiveDbRole, requireAuth } from "../../middleware/auth.middleware";
 import {
   createAnnouncementHandler,
   deleteAnnouncementHandler,
@@ -18,7 +18,7 @@ announcementRouter.use(requireAuth);
 announcementRouter.get("/", listPublishedAnnouncementsHandler);
 announcementRouter.get("/:id", getPublishedAnnouncementHandler);
 
-adminAnnouncementRouter.use(requireAuth, requireActiveDbRole(RoleCode.master_admin));
+adminAnnouncementRouter.use(requireAuth, requireAnyActiveDbRole([RoleCode.master_admin, RoleCode.regional_admin]));
 adminAnnouncementRouter.get("/", listAdminAnnouncementsHandler);
 adminAnnouncementRouter.post("/", createAnnouncementHandler);
 adminAnnouncementRouter.get("/:id", getAdminAnnouncementHandler);
