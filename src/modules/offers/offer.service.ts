@@ -7,6 +7,7 @@ import { notifyAdminsOfOfferReview } from "../../shared/review-email";
 import {
   calculateOfferFinancialSummary,
   decimalToNumber,
+  type FinancialRules,
   parseFinancialRules
 } from "./offer-financial";
 import type { listAdminOffersQuerySchema, offerInputSchema, reviewOfferSchema } from "./offer.validation";
@@ -32,6 +33,15 @@ const offerInclude = {
     orderBy: { createdAt: "desc" as const }
   }
 };
+
+const offerSummarySelect = {
+  offerType: true,
+  universityName: true,
+  reviewStatus: true,
+  hasScholarship: true,
+  scholarshipCoversLivingCost: true,
+  privateFundingAmount: true
+} satisfies Prisma.OfferSelect;
 
 const editableOfferStatuses = new Set<OfferReviewStatus>([
   OfferReviewStatus.draft,
@@ -138,9 +148,12 @@ function notifyOfferReviewBestEffort(input: {
   });
 }
 
-async function formatOffer(offer: Prisma.OfferGetPayload<{ include: typeof offerInclude }>) {
-  const rules = await getOfferFinancialRules();
-  const summary = calculateOfferFinancialSummary(rules, {
+async function formatOffer(
+  offer: Prisma.OfferGetPayload<{ include: typeof offerInclude }>,
+  rules?: FinancialRules
+) {
+  const financialRules = rules ?? await getOfferFinancialRules();
+  const summary = calculateOfferFinancialSummary(financialRules, {
     countryName: offer.region.name,
     courseLevel: offer.courseLevel,
     durationYears: decimalToNumber(offer.durationYears),
@@ -219,8 +232,12 @@ function isResidentialSchool(courseLevel: string) {
   return courseLevel.trim().toLowerCase() === "residential independent school";
 }
 
-async function validateOfferBusinessRules(input: OfferInput, regionCountryName: string) {
-  const rules = await getOfferFinancialRules();
+async function validateOfferBusinessRules(
+  input: OfferInput,
+  regionCountryName: string,
+  rules?: FinancialRules
+) {
+  const financialRules = rules ?? await getOfferFinancialRules();
 
   if (input.offerType.trim().toLowerCase() === "conditional" && !input.conditions) {
     throw new ApiError(400, "Conditions are required for conditional offers");
@@ -239,7 +256,7 @@ async function validateOfferBusinessRules(input: OfferInput, regionCountryName: 
   }
 
   if (!isResidentialSchool(input.courseLevel) && regionCountryName.toLowerCase() === "uk") {
-    const ukRules = rules.livingCostRules.UK ?? {};
+    const ukRules = financialRules.livingCostRules.UK ?? {};
     if (!input.livingCostLocationKey || !ukRules[input.livingCostLocationKey]) {
       throw new ApiError(400, "Valid UK living cost location is required");
     }
@@ -259,8 +276,9 @@ export async function listMyOffers(userId: string) {
     include: offerInclude,
     orderBy: { updatedAt: "desc" }
   });
+  const financialRules = offers.length > 0 ? await getOfferFinancialRules() : undefined;
 
-  return Promise.all(offers.map(formatOffer));
+  return Promise.all(offers.map((offer) => formatOffer(offer, financialRules)));
 }
 
 export async function getMyOffer(userId: string, offerId: string) {
@@ -274,13 +292,15 @@ export async function getMyOffer(userId: string, offerId: string) {
     throw new ApiError(404, "Offer not found");
   }
 
-  return formatOffer(offer);
+  const financialRules = await getOfferFinancialRules();
+  return formatOffer(offer, financialRules);
 }
 
 export async function createMyOffer(userId: string, input: OfferInput) {
   await getApprovedStudentProfile(userId);
   const { region, university } = await resolveOfferRegionAndUniversity(input);
-  await validateOfferBusinessRules(input, region.name);
+  const financialRules = await getOfferFinancialRules();
+  await validateOfferBusinessRules(input, region.name, financialRules);
 
   const offer = await prisma.offer.create({
     data: {
@@ -292,7 +312,7 @@ export async function createMyOffer(userId: string, input: OfferInput) {
     include: offerInclude
   });
 
-  return formatOffer(offer);
+  return formatOffer(offer, financialRules);
 }
 
 export async function updateMyOffer(input: {
@@ -316,7 +336,8 @@ export async function updateMyOffer(input: {
   }
 
   const { region, university } = await resolveOfferRegionAndUniversity(input.data);
-  await validateOfferBusinessRules(input.data, region.name);
+  const financialRules = await getOfferFinancialRules();
+  await validateOfferBusinessRules(input.data, region.name, financialRules);
 
   const beforeData = offerSnapshot(existingOffer);
   const nextData = { regionId: region.id, universityId: university?.id, ...toOfferData(input.data) };
@@ -386,7 +407,7 @@ export async function updateMyOffer(input: {
     }
   }
 
-  return formatOffer(offer);
+  return formatOffer(offer, financialRules);
 }
 
 export async function removeMyOffer(input: {
@@ -499,7 +520,8 @@ export async function submitMyOffer(input: {
     });
   }
 
-  return formatOffer(submittedOffer);
+  const financialRules = await getOfferFinancialRules();
+  return formatOffer(submittedOffer, financialRules);
 }
 
 async function canReviewOffer(userId: string, regionId: string) {
@@ -622,7 +644,11 @@ function emptySummary() {
   };
 }
 
-function getFundingType(offer: Prisma.OfferGetPayload<{ include: typeof offerInclude }>) {
+function getFundingType(offer: {
+  hasScholarship: boolean;
+  scholarshipCoversLivingCost: boolean;
+  privateFundingAmount: Prisma.Decimal;
+}) {
   if (offer.hasScholarship && offer.scholarshipCoversLivingCost) {
     return "fully_funded";
   }
@@ -638,7 +664,7 @@ function getFundingType(offer: Prisma.OfferGetPayload<{ include: typeof offerInc
   return "no_funding";
 }
 
-function buildOfferSummary(offers: Prisma.OfferGetPayload<{ include: typeof offerInclude }>[]) {
+function buildOfferSummary(offers: Prisma.OfferGetPayload<{ select: typeof offerSummarySelect }>[]) {
   const summary = emptySummary();
   summary.total = offers.length;
 
@@ -714,7 +740,7 @@ export async function listAdminOffers(userId: string, query: ListAdminOffersQuer
   const where = buildAdminOfferWhere(query, scope);
   const skip = (query.page - 1) * query.pageSize;
 
-  const [offers, total, summaryOffers] = await prisma.$transaction([
+  const [offers, total, summaryOffers] = await Promise.all([
     prisma.offer.findMany({
       where,
       include: offerInclude,
@@ -725,12 +751,13 @@ export async function listAdminOffers(userId: string, query: ListAdminOffersQuer
     prisma.offer.count({ where }),
     prisma.offer.findMany({
       where,
-      include: offerInclude
+      select: offerSummarySelect
     }
     )
   ]);
 
-  const formattedOffers = await Promise.all(offers.map(formatOffer));
+  const financialRules = offers.length > 0 ? await getOfferFinancialRules() : undefined;
+  const formattedOffers = await Promise.all(offers.map((offer) => formatOffer(offer, financialRules)));
   const latestRevisionByOfferId = await getLatestOfferRevisionByOfferId(offers.map((offer) => offer.id));
 
   return {
@@ -780,7 +807,10 @@ export async function exportAdminOffersCsv(input: {
     orderBy: { updatedAt: "desc" }
   });
 
-  const financialSummaries = await Promise.all(offers.map(formatOffer));
+  const financialRules = offers.length > 0 ? await getOfferFinancialRules() : undefined;
+  const financialSummaries = await Promise.all(
+    offers.map((offer) => formatOffer(offer, financialRules))
+  );
   const rows = offers.map((offer, index) => ({
     offerId: offer.id,
     studentId: offer.studentUserId,
@@ -855,7 +885,7 @@ export async function getAdminOffer(userId: string, offerId: string) {
   });
 
   return {
-    ...(await formatOffer(offer)),
+    ...(await formatOffer(offer, await getOfferFinancialRules())),
     revisions: revisions.map(formatOfferRevision)
   };
 }
@@ -940,5 +970,5 @@ export async function reviewOffer(input: {
     userAgent: input.userAgent
   });
 
-  return formatOffer(reviewedOffer);
+  return formatOffer(reviewedOffer, await getOfferFinancialRules());
 }

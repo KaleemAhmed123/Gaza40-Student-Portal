@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { ApiError } from "../../shared/http";
 
-type FinancialRules = {
+export type FinancialRules = {
   currency: string;
   livingCostRules: Record<string, Record<string, { label: string; amountPerYear: number }>>;
   durationRule: {
