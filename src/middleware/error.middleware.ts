@@ -54,5 +54,15 @@ export function errorHandler(
     }
   }
 
+  if (error instanceof Prisma.PrismaClientInitializationError) {
+    res.status(503).json({
+      error: {
+        message: "Database temporarily unavailable. Please retry in a moment."
+      }
+    });
+    return;
+  }
+
+  console.error(error);
   res.status(500).json({ error: { message: "Internal server error" } });
 }
