@@ -76,7 +76,7 @@ Before full MVP release:
 - Use private object storage for uploaded files.
 - Verify Resend sending domain.
 - Set `NODE_ENV=production`.
-- Set `COOKIE_SECURE=true`.
+- Set `COOKIE_SECURE=true` and `TRUST_PROXY=true` on Render.
 - Set production `CORS_ORIGIN`.
 - Set production `FRONTEND_URL`.
 - Run full Postman happy path.

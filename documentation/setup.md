@@ -27,6 +27,7 @@ Required:
 - `JWT_ACCESS_SECRET`
 - `CORS_ORIGIN`
 - `FRONTEND_URL`
+- `TRUST_PROXY`
 - `COOKIE_SECURE`
 
 Optional:

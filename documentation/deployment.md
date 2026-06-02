@@ -48,8 +48,11 @@ DIRECT_URL=
 JWT_ACCESS_SECRET=
 CORS_ORIGIN=
 FRONTEND_URL=
+TRUST_PROXY=true
 COOKIE_SECURE=true
 ```
+
+Production code also forces `trust proxy` and secure `SameSite=None` auth cookies when `NODE_ENV=production`, but these environment values should still be set explicitly on Render.
 
 Optional:
 
