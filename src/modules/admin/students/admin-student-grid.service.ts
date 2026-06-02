@@ -107,7 +107,7 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
 
   if (scope.role === "regional_admin") {
     const where = buildRegionalWhere(query, scope.regionId);
-    const [students, total] = await prisma.$transaction([
+    const [students, total] = await Promise.all([
       prisma.user.findMany({
         where,
         select: {
@@ -158,7 +158,7 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
   }
 
   const where = buildMasterWhere(query);
-  const [students, total, summaryStudents] = await prisma.$transaction([
+  const [students, total, summaryStudents] = await Promise.all([
     prisma.user.findMany({
       where,
       select: {

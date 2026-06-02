@@ -103,7 +103,7 @@ export async function listAdminVolunteers(userId: string, query: ListAdminVolunt
     };
   }
 
-  const [volunteers, total, summaryVolunteers] = await prisma.$transaction([
+  const [volunteers, total, summaryVolunteers] = await Promise.all([
     prisma.user.findMany({
       where,
       select: {
