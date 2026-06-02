@@ -17,6 +17,10 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
   UPLOAD_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(60),
+  TRUST_PROXY: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
   COOKIE_SECURE: z
     .enum(["true", "false"])
     .default("false")

@@ -24,13 +24,19 @@ import {
 
 const accessCookieName = "accessToken";
 
-function setAccessCookie(res: Response, token: string) {
-  res.cookie(accessCookieName, token, {
+function accessCookieOptions() {
+  const useSecureCookie = env.COOKIE_SECURE || env.NODE_ENV === "production";
+
+  return {
     httpOnly: true,
-    secure: env.COOKIE_SECURE,
-    sameSite: "lax",
+    secure: useSecureCookie,
+    sameSite: useSecureCookie ? "none" as const : "lax" as const,
     path: "/"
-  });
+  };
+}
+
+function setAccessCookie(res: Response, token: string) {
+  res.cookie(accessCookieName, token, accessCookieOptions());
 }
 
 export const registerStudentHandler = asyncHandler(async (req, res) => {
@@ -55,7 +61,7 @@ export const loginHandler = asyncHandler(async (req, res) => {
 });
 
 export const logoutHandler = asyncHandler(async (_req, res) => {
-  res.clearCookie(accessCookieName, { path: "/" });
+  res.clearCookie(accessCookieName, accessCookieOptions());
   sendSuccess(res, { loggedOut: true });
 });
 
