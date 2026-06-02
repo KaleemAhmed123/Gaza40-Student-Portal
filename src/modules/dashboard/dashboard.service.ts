@@ -61,7 +61,7 @@ async function getAdminScope(userId: string): Promise<AdminScope> {
 
 export async function getStudentDashboard(userId: string) {
   const [profile, offerCounts, queryCounts, recentOffers, recentQueries, latestAnnouncements] =
-    await prisma.$transaction([
+    await Promise.all([
       prisma.studentProfile.findUnique({
         where: { userId },
         select: {
@@ -188,7 +188,7 @@ export async function getAdminDashboard(userId: string) {
     recentOffers,
     recentQueries,
     recentAuditLogs
-  ] = await prisma.$transaction([
+  ] = await Promise.all([
     prisma.user.count({ where: studentWhere }),
     prisma.studentProfile.groupBy({
       by: ["profileStatus"],
@@ -308,7 +308,7 @@ export async function getAdminDashboard(userId: string) {
 }
 
 export async function getMentorDashboard(userId: string) {
-  const [queryCounts, recentQueries] = await prisma.$transaction([
+  const [queryCounts, recentQueries] = await Promise.all([
     prisma.query.groupBy({
       by: ["status"],
       where: { assignedToUserId: userId, deletedAt: null },
