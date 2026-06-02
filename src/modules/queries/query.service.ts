@@ -53,6 +53,39 @@ const queryInclude = {
   }
 };
 
+const queryListInclude = {
+  student: {
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      phone: true
+    }
+  },
+  region: {
+    select: {
+      id: true,
+      code: true,
+      name: true
+    }
+  },
+  offer: {
+    select: {
+      id: true,
+      universityName: true,
+      courseName: true,
+      reviewStatus: true,
+      regionId: true
+    }
+  },
+  assignedTo: {
+    select: { id: true, fullName: true, email: true }
+  },
+  assignedBy: {
+    select: { id: true, fullName: true, email: true }
+  },
+};
+
 function categoryMetadataRequires(metadata: unknown, key: "requiresRegion" | "requiresUniversity") {
   return Boolean(
     metadata &&
@@ -277,7 +310,7 @@ export async function createQuery(input: {
 export async function listMyQueries(userId: string) {
   return prisma.query.findMany({
     where: { studentUserId: userId, deletedAt: null },
-    include: queryInclude,
+    include: queryListInclude,
     orderBy: { updatedAt: "desc" }
   });
 }
@@ -343,7 +376,7 @@ export async function listAdminQueries(userId: string, query: ListQueriesQuery) 
       ...(query.regionId ? { regionId: query.regionId } : {}),
       ...(scope.isMasterAdmin ? {} : { regionId: scope.regionId })
     },
-    include: queryInclude,
+    include: queryListInclude,
     orderBy: { updatedAt: "desc" }
   });
 }
@@ -474,7 +507,7 @@ export async function resolveAdminQuery(input: {
 export async function listMentorQueries(userId: string) {
   return prisma.query.findMany({
     where: { assignedToUserId: userId, deletedAt: null },
-    include: queryInclude,
+    include: queryListInclude,
     orderBy: { updatedAt: "desc" }
   });
 }
