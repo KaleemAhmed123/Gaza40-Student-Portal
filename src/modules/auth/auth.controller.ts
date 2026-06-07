@@ -31,7 +31,8 @@ function accessCookieOptions() {
     httpOnly: true,
     secure: useSecureCookie,
     sameSite: useSecureCookie ? "none" as const : "lax" as const,
-    path: "/"
+    path: "/",
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
   };
 }
 

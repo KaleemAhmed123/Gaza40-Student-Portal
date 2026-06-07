@@ -131,6 +131,7 @@ model User {
   regionalAdminProfile  RegionalAdminProfile?  @relation("RegionalAdminUser")
   regionalAdminsCreated RegionalAdminProfile[] @relation("RegionalAdminAssignedBy")
   studentOffers         Offer[]                @relation("StudentOffers")
+  mentorOffers          Offer[]                @relation("OfferMentor")
   documents             Document[]
   offerReviews          OfferRevision[]
   studentQueries        Query[]                @relation("StudentQueries")
@@ -288,6 +289,7 @@ model Offer {
   boardingFees                Decimal?          @db.Decimal(12, 2)
   reviewStatus                OfferReviewStatus @default(draft)
   lockedForReview             Boolean           @default(false)
+  mentorId                    String?
   reviewedBy                  String?
   reviewedAt                  DateTime?
   reviewNotes                 String?
@@ -297,6 +299,7 @@ model Offer {
   student                     User              @relation("StudentOffers", fields: [studentUserId], references: [id])
   region                      Region            @relation(fields: [regionId], references: [id])
   university                  University?       @relation(fields: [universityId], references: [id])
+  mentor                      User?             @relation("OfferMentor", fields: [mentorId], references: [id])
   documents                   Document[]
   revisions                   OfferRevision[]
   queries                     Query[]
@@ -304,6 +307,7 @@ model Offer {
   @@index([studentUserId])
   @@index([regionId])
   @@index([universityId])
+  @@index([mentorId])
   @@index([reviewStatus])
   @@index([offerType])
   @@index([universityName])

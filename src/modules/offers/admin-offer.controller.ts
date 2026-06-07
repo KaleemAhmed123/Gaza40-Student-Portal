@@ -5,9 +5,10 @@ import {
   getAdminOffer,
   getAdminOfferRevisions,
   listAdminOffers,
-  reviewOffer
+  reviewOffer,
+  assignMentorToOffer
 } from "./offer.service";
-import { listAdminOffersQuerySchema, reviewOfferSchema } from "./offer.validation";
+import { listAdminOffersQuerySchema, reviewOfferSchema, assignOfferMentorSchema } from "./offer.validation";
 
 export const listAdminOffersHandler = asyncHandler(async (req, res) => {
   const query = listAdminOffersQuerySchema.parse(req.query);
@@ -45,6 +46,18 @@ export const reviewOfferHandler = asyncHandler(async (req, res) => {
     userId: req.authUser!.id,
     offerId: req.params.id,
     data: input,
+    ipAddress: req.ip,
+    userAgent: req.get("user-agent")
+  });
+  sendSuccess(res, { offer });
+});
+
+export const assignOfferMentorHandler = asyncHandler(async (req, res) => {
+  const input = assignOfferMentorSchema.parse(req.body);
+  const offer = await assignMentorToOffer({
+    userId: req.authUser!.id,
+    offerId: req.params.id,
+    mentorId: input.mentorId,
     ipAddress: req.ip,
     userAgent: req.get("user-agent")
   });

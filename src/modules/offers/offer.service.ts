@@ -1,4 +1,4 @@
-import { DocumentStatus, DocumentType, OfferReviewStatus, Prisma, ProfileStatus, RoleCode } from "@prisma/client";
+import { DocumentStatus, DocumentType, OfferReviewStatus, Prisma, ProfileStatus, RoleCode, QueryStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
 import { toCsv } from "../../shared/csv";
@@ -20,6 +20,22 @@ type ReviewOfferInput = z.infer<typeof reviewOfferSchema>;
 const offerInclude = {
   region: true,
   university: true,
+  student: {
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      phone: true,
+      dateOfBirth: true
+    }
+  },
+  mentor: {
+    select: {
+      id: true,
+      fullName: true,
+      email: true
+    }
+  },
   documents: {
     where: { status: DocumentStatus.active, deletedAt: null },
     select: {
@@ -30,9 +46,9 @@ const offerInclude = {
       fileSizeBytes: true,
       createdAt: true
     },
-    orderBy: { createdAt: "desc" as const }
+    orderBy: { createdAt: "desc" }
   }
-};
+} as const satisfies Prisma.OfferInclude;
 
 const offerSummarySelect = {
   offerType: true,
@@ -331,7 +347,8 @@ export async function updateMyOffer(input: {
     throw new ApiError(404, "Offer not found");
   }
 
-  if (!editableOfferStatuses.has(existingOffer.reviewStatus)) {
+  const isEditable = !existingOffer.mentorId || editableOfferStatuses.has(existingOffer.reviewStatus);
+  if (!isEditable) {
     throw new ApiError(409, "Offer cannot be edited in its current status");
   }
 
@@ -352,12 +369,12 @@ export async function updateMyOffer(input: {
         ...nextData,
         ...(editedApprovedOffer
           ? {
-              reviewStatus: OfferReviewStatus.under_review,
-              lockedForReview: true,
-              reviewedAt: null,
-              reviewedBy: null,
-              reviewNotes: null
-            }
+            reviewStatus: OfferReviewStatus.under_review,
+            lockedForReview: true,
+            reviewedAt: null,
+            reviewedBy: null,
+            reviewNotes: null
+          }
           : {})
       },
       include: offerInclude
@@ -423,6 +440,10 @@ export async function removeMyOffer(input: {
 
   if (!offer) {
     throw new ApiError(404, "Offer not found");
+  }
+
+  if (offer.mentorId) {
+    throw new ApiError(409, "Offer cannot be deleted after a mentor has been assigned");
   }
 
   const removedOffer = await prisma.offer.update({
@@ -524,7 +545,7 @@ export async function submitMyOffer(input: {
   return formatOffer(submittedOffer, financialRules);
 }
 
-async function canReviewOffer(userId: string, regionId: string) {
+async function canReviewOffer(userId: string, regionId: string, offerId?: string) {
   const masterAdmin = await prisma.user.findFirst({
     where: {
       id: userId,
@@ -552,7 +573,33 @@ async function canReviewOffer(userId: string, regionId: string) {
     }
   });
 
-  return Boolean(regionalAdmin);
+  if (regionalAdmin) {
+    return true;
+  }
+
+  if (offerId) {
+    const isAssignedMentor = await prisma.offer.findFirst({
+      where: {
+        id: offerId,
+        mentorId: userId,
+        deletedAt: null
+      }
+    });
+
+    if (isAssignedMentor) {
+      const mentor = await prisma.user.findFirst({
+        where: {
+          id: userId,
+          deletedAt: null,
+          accountStatus: "active",
+          roles: { has: RoleCode.mentor }
+        }
+      });
+      return Boolean(mentor);
+    }
+  }
+
+  return false;
 }
 
 type AdminOfferScope =
@@ -604,14 +651,14 @@ function buildAdminOfferWhere(query: ListAdminOffersQuery, scope: AdminOfferScop
     ...(query.hasScholarship === undefined ? {} : { hasScholarship: query.hasScholarship }),
     ...(query.search
       ? {
-          OR: [
-            { universityName: { contains: query.search, mode: "insensitive" } },
-            { courseName: { contains: query.search, mode: "insensitive" } },
-            { courseField: { contains: query.search, mode: "insensitive" } },
-            { student: { fullName: { contains: query.search, mode: "insensitive" } } },
-            { student: { email: { contains: query.search, mode: "insensitive" } } }
-          ]
-        }
+        OR: [
+          { universityName: { contains: query.search, mode: "insensitive" } },
+          { courseName: { contains: query.search, mode: "insensitive" } },
+          { courseField: { contains: query.search, mode: "insensitive" } },
+          { student: { fullName: { contains: query.search, mode: "insensitive" } } },
+          { student: { email: { contains: query.search, mode: "insensitive" } } }
+        ]
+      }
       : {}),
     ...(query.fundingType === "fully_funded"
       ? { hasScholarship: true, scholarshipCoversLivingCost: true }
@@ -794,6 +841,7 @@ export async function exportAdminOffersCsv(input: {
           fullName: true,
           email: true,
           phone: true,
+          dateOfBirth: true,
           studentProfile: {
             select: {
               emergencyContactFirstName: true,
@@ -874,7 +922,7 @@ export async function getAdminOffer(userId: string, offerId: string) {
     throw new ApiError(404, "Offer not found");
   }
 
-  if (!(await canReviewOffer(userId, offer.regionId))) {
+  if (!(await canReviewOffer(userId, offer.regionId, offer.id))) {
     throw new ApiError(403, "You do not have permission to access this offer");
   }
 
@@ -900,7 +948,7 @@ export async function getAdminOfferRevisions(userId: string, offerId: string) {
     throw new ApiError(404, "Offer not found");
   }
 
-  if (!(await canReviewOffer(userId, offer.regionId))) {
+  if (!(await canReviewOffer(userId, offer.regionId, offer.id))) {
     throw new ApiError(403, "You do not have permission to access this offer");
   }
 
@@ -928,7 +976,7 @@ export async function reviewOffer(input: {
     throw new ApiError(404, "Offer not found");
   }
 
-  if (!(await canReviewOffer(input.userId, offer.regionId))) {
+  if (!(await canReviewOffer(input.userId, offer.regionId, offer.id))) {
     throw new ApiError(403, "You do not have permission to review this offer");
   }
 
@@ -971,4 +1019,84 @@ export async function reviewOffer(input: {
   });
 
   return formatOffer(reviewedOffer, await getOfferFinancialRules());
+}
+
+export async function assignMentorToOffer(input: {
+  userId: string;
+  offerId: string;
+  mentorId: string;
+  ipAddress?: string;
+  userAgent?: string;
+}) {
+  const offer = await prisma.offer.findFirst({
+    where: { id: input.offerId, deletedAt: null },
+    include: offerInclude
+  });
+
+  if (!offer) {
+    throw new ApiError(404, "Offer not found");
+  }
+
+  if (!(await canReviewOffer(input.userId, offer.regionId))) {
+    throw new ApiError(403, "You do not have permission to assign a mentor to this offer");
+  }
+
+  const mentor = await prisma.user.findFirst({
+    where: {
+      id: input.mentorId,
+      deletedAt: null,
+      accountStatus: "active",
+      roles: { has: RoleCode.mentor },
+      volunteerProfile: { deletedAt: null }
+    },
+    select: { id: true, fullName: true, email: true }
+  });
+
+  if (!mentor) {
+    throw new ApiError(400, "Assigned user must be an active mentor");
+  }
+
+  // Directly attach mentor to the offer — no Query creation
+  const updatedOffer = await prisma.offer.update({
+    where: { id: offer.id },
+    data: { mentorId: mentor.id },
+    include: offerInclude
+  });
+
+  await recordAuditLog({
+    actorUserId: input.userId,
+    action: "offer_mentor_assigned",
+    entityType: "offer",
+    entityId: offer.id,
+    metadata: { mentorId: mentor.id, mentorName: mentor.fullName },
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent
+  });
+
+  return formatOffer(updatedOffer, await getOfferFinancialRules());
+}
+
+export async function listMentorOffers(userId: string) {
+  // Verify caller is an active mentor
+  const mentor = await prisma.user.findFirst({
+    where: {
+      id: userId,
+      deletedAt: null,
+      accountStatus: "active",
+      roles: { has: RoleCode.mentor }
+    }
+  });
+
+  if (!mentor) {
+    throw new ApiError(403, "You do not have permission to access mentor offers");
+  }
+
+  const offers = await prisma.offer.findMany({
+    where: { mentorId: userId, deletedAt: null },
+    include: offerInclude,
+    orderBy: { updatedAt: "desc" }
+  });
+
+  const financialRules = offers.length > 0 ? await getOfferFinancialRules() : undefined;
+  return Promise.all(offers.map((offer) => formatOffer(offer, financialRules)));
 }

@@ -310,8 +310,23 @@ export async function exportAdminStudentsCsv(input: {
           id: true,
           universityName: true,
           courseName: true,
+          courseField: true,
+          courseLevel: true,
           reviewStatus: true,
-          region: { select: { name: true } }
+          tuitionFeePerYear: true,
+          scholarshipAmountPerYear: true,
+          privateFundingAmount: true,
+          createdAt: true,
+          updatedAt: true,
+          region: { select: { name: true } },
+          documents: {
+            where: { status: "active", deletedAt: null },
+            select: {
+              id: true,
+              documentType: true,
+              originalFilename: true
+            }
+          }
         },
         orderBy: { updatedAt: "desc" }
       }
@@ -319,29 +334,60 @@ export async function exportAdminStudentsCsv(input: {
     orderBy: { createdAt: "desc" }
   });
 
-  const rows = students.map((student) => ({
-    studentId: student.id,
-    fullName: student.fullName,
-    email: student.email,
-    phone: student.phone,
-    dateOfBirth: student.studentProfile?.dateOfBirth ?? student.dateOfBirth,
-    accountStatus: student.accountStatus,
-    profileStatus: student.studentProfile?.profileStatus,
-    locationInGaza: student.studentProfile?.locationInGaza,
-    passportStatus: student.studentProfile?.passportStatus,
-    passportLocation: student.studentProfile?.passportLocation,
-    consentSigned: student.studentProfile?.consentSigned,
-    hasOfferSelfReported: student.studentProfile?.hasOfferSelfReported,
-    hasVerifiedOffer: student.studentProfile?.hasVerifiedOffer,
-    emergencyContactName: student.studentProfile?.emergencyContactFirstName,
-    emergencyContactRelation: student.studentProfile?.emergencyContactRelation,
-    emergencyContactPhone: student.studentProfile?.emergencyContactPhone,
-    offerCount: student.studentOffers.length,
-    offerRegions: student.studentOffers.map((offer) => offer.region.name),
-    offerUniversities: student.studentOffers.map((offer) => offer.universityName),
-    offerStatuses: student.studentOffers.map((offer) => offer.reviewStatus),
-    createdAt: student.createdAt
-  }));
+  // One row per offer (student details repeated across rows)
+  const rows: Record<string, unknown>[] = [];
+  for (const student of students) {
+    const studentBase = {
+      studentId: student.id,
+      studentName: student.fullName,
+      email: student.email,
+      phone: student.phone,
+      dateOfBirth: student.studentProfile?.dateOfBirth ?? student.dateOfBirth,
+      locationInGaza: student.studentProfile?.locationInGaza,
+      passportStatus: student.studentProfile?.passportStatus,
+      profileStatus: student.studentProfile?.profileStatus,
+      consentSigned: student.studentProfile?.consentSigned,
+      hasVerifiedOffer: student.studentProfile?.hasVerifiedOffer,
+      emergencyContactName: student.studentProfile?.emergencyContactFirstName,
+      emergencyContactRelation: student.studentProfile?.emergencyContactRelation,
+      emergencyContactPhone: student.studentProfile?.emergencyContactPhone,
+      accountStatus: student.accountStatus,
+      registeredAt: student.createdAt
+    };
+
+    if (student.studentOffers.length === 0) {
+      rows.push({ ...studentBase, offerId: "", universityName: "No offers", region: "", courseName: "", courseField: "", courseLevel: "", offerStatus: "", tuitionFeePerYear: "", scholarshipAmountPerYear: "", privateFundingAmount: "", offerLetterUrl: "", scholarshipLetterUrl: "", offerCreatedAt: "", offerUpdatedAt: "" });
+    } else {
+      for (const offer of student.studentOffers) {
+        const offerLetterDoc = offer.documents.find((d) => d.documentType === "offer_letter");
+        const scholarshipLetterDoc = offer.documents.find((d) => d.documentType === "scholarship_letter");
+
+        rows.push({
+          ...studentBase,
+          offerId: offer.id,
+          universityName: offer.universityName,
+          region: offer.region.name,
+          courseName: offer.courseName,
+          courseField: offer.courseField,
+          courseLevel: offer.courseLevel,
+          offerStatus: offer.reviewStatus,
+          tuitionFeePerYear: offer.tuitionFeePerYear,
+          scholarshipAmountPerYear: offer.scholarshipAmountPerYear ?? "",
+          privateFundingAmount: offer.privateFundingAmount,
+          offerLetterUrl: offerLetterDoc
+            ? `${process.env.API_BASE_URL ?? ""}/api/documents/${offerLetterDoc.id}/download`
+            : "",
+          offerLetterFileName: offerLetterDoc?.originalFilename ?? "",
+          scholarshipLetterUrl: scholarshipLetterDoc
+            ? `${process.env.API_BASE_URL ?? ""}/api/documents/${scholarshipLetterDoc.id}/download`
+            : "",
+          scholarshipLetterFileName: scholarshipLetterDoc?.originalFilename ?? "",
+          offerCreatedAt: offer.createdAt,
+          offerUpdatedAt: offer.updatedAt
+        });
+      }
+    }
+  }
 
   await recordAuditLog({
     actorUserId: input.userId,
@@ -354,3 +400,4 @@ export async function exportAdminStudentsCsv(input: {
 
   return toCsv(rows);
 }
+

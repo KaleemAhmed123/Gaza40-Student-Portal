@@ -168,6 +168,21 @@ async function toAuthUser(user: AuthUserRecord | LoginUserRecord | null) {
       : Promise.resolve(null)
   ]);
 
+  let volunteerProfileWithRegion = null;
+  if (volunteerProfile) {
+    let region = null;
+    if (volunteerProfile.preferredRegionId) {
+      region = await prisma.region.findUnique({
+        where: { id: volunteerProfile.preferredRegionId },
+        select: { id: true, code: true, name: true }
+      });
+    }
+    volunteerProfileWithRegion = {
+      ...volunteerProfile,
+      preferredRegion: region
+    };
+  }
+
   return {
     id: validUser.id,
     email: validUser.email,
@@ -177,7 +192,7 @@ async function toAuthUser(user: AuthUserRecord | LoginUserRecord | null) {
     accountStatus: validUser.accountStatus,
     emailVerifiedAt: validUser.emailVerifiedAt,
     studentProfile,
-    volunteerProfile,
+    volunteerProfile: volunteerProfileWithRegion,
     regionalAdminProfile
   };
 }
@@ -233,7 +248,8 @@ export async function registerVolunteer(input: RegisterVolunteerInput) {
       roles: [RoleCode.mentor],
       volunteerProfile: {
         create: {
-          universityAffiliation: input.universityAffiliation
+          universityAffiliation: input.universityAffiliation,
+          preferredRegionId: input.preferredRegionId
         }
       }
     }

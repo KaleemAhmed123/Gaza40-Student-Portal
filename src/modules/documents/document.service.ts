@@ -109,19 +109,56 @@ export async function getDownloadableDocument(input: {
     throw new ApiError(404, "Document not found");
   }
 
-  if (document.ownerUserId !== input.requesterUserId) {
-    const isMasterAdmin = await prisma.user.findFirst({
+  let hasAccess = document.ownerUserId === input.requesterUserId;
+
+  if (!hasAccess) {
+    const user = await prisma.user.findFirst({
       where: {
         id: input.requesterUserId,
         deletedAt: null,
-        accountStatus: "active",
-        roles: { has: RoleCode.master_admin }
-      }
+        accountStatus: "active"
+      },
+      include: { regionalAdminProfile: true }
     });
 
-    if (!isMasterAdmin) {
-      throw new ApiError(403, "You do not have permission to access this document");
+    if (user) {
+      if (user.roles.includes(RoleCode.master_admin)) {
+        hasAccess = true;
+      } else if (
+        user.roles.includes(RoleCode.regional_admin) &&
+        user.regionalAdminProfile?.status === "active" &&
+        !user.regionalAdminProfile.deletedAt
+      ) {
+        const regionId = user.regionalAdminProfile.regionId;
+        if (document.offerId) {
+          const offer = await prisma.offer.findFirst({
+            where: { id: document.offerId, regionId, deletedAt: null }
+          });
+          if (offer) hasAccess = true;
+        } else {
+          const hasOfferInRegion = await prisma.offer.findFirst({
+            where: { studentUserId: document.ownerUserId, regionId, deletedAt: null }
+          });
+          if (hasOfferInRegion) hasAccess = true;
+        }
+      } else if (user.roles.includes(RoleCode.mentor)) {
+        if (document.offerId) {
+          const offer = await prisma.offer.findFirst({
+            where: { id: document.offerId, mentorId: input.requesterUserId, deletedAt: null }
+          });
+          if (offer) hasAccess = true;
+        } else {
+          const hasAssignedOffer = await prisma.offer.findFirst({
+            where: { studentUserId: document.ownerUserId, mentorId: input.requesterUserId, deletedAt: null }
+          });
+          if (hasAssignedOffer) hasAccess = true;
+        }
+      }
     }
+  }
+
+  if (!hasAccess) {
+    throw new ApiError(403, "You do not have permission to access this document");
   }
 
   const absolutePath = path.join(process.cwd(), document.storageKey);

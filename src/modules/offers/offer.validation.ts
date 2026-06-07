@@ -49,3 +49,9 @@ export const listAdminOffersQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(25)
 });
+
+export const assignOfferMentorSchema = z.object({
+  mentorId: z.string().uuid("Invalid mentor ID")
+});
+
+export type AssignOfferMentorInput = z.infer<typeof assignOfferMentorSchema>;
