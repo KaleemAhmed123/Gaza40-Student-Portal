@@ -3,7 +3,9 @@ import { Router } from "express";
 import { requireAuth, requireRole } from "../../../middleware/auth.middleware";
 import {
   createRegionalAdminHandler,
-  listRegionalAdminsHandler
+  listRegionalAdminsHandler,
+  updateRegionalAdminHandler,
+  deleteRegionalAdminHandler
 } from "./admin-regional-admin.controller";
 
 export const adminRegionalAdminRouter = Router();
@@ -13,3 +15,5 @@ adminRegionalAdminRouter.use(requireAuth, requireRole([RoleCode.master_admin]));
 
 adminRegionalAdminRouter.get("/", listRegionalAdminsHandler);
 adminRegionalAdminRouter.post("/", createRegionalAdminHandler);
+adminRegionalAdminRouter.patch("/:id", updateRegionalAdminHandler);
+adminRegionalAdminRouter.delete("/:id", deleteRegionalAdminHandler);

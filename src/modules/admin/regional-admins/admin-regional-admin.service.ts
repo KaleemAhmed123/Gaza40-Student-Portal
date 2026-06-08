@@ -1,8 +1,8 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "../../../db/prisma";
 import { ApiError } from "../../../shared/http";
-import { RoleCode, AccountStatus } from "@prisma/client";
-import type { CreateRegionalAdminInput } from "./admin-regional-admin.validation";
+import { RoleCode, AccountStatus, RegionalAdminStatus } from "@prisma/client";
+import type { CreateRegionalAdminInput, UpdateRegionalAdminInput } from "./admin-regional-admin.validation";
 
 const passwordSaltRounds = 12;
 
@@ -94,3 +94,112 @@ export async function listRegionalAdmins() {
     } : null
   }));
 }
+
+export async function updateRegionalAdmin(id: string, input: UpdateRegionalAdminInput) {
+  const existingUser = await prisma.user.findFirst({
+    where: { id, roles: { has: RoleCode.regional_admin }, deletedAt: null },
+    include: { regionalAdminProfile: true }
+  });
+
+  if (!existingUser) {
+    throw new ApiError(404, "Regional Admin not found");
+  }
+
+  if (input.email && input.email !== existingUser.email) {
+    const emailConflict = await prisma.user.findUnique({
+      where: { email: input.email }
+    });
+    if (emailConflict) {
+      throw new ApiError(400, "Email is already registered");
+    }
+  }
+
+  if (input.regionId) {
+    const region = await prisma.region.findFirst({
+      where: { id: input.regionId, isActive: true, deletedAt: null }
+    });
+    if (!region) {
+      throw new ApiError(404, "Target region not found or inactive");
+    }
+  }
+
+  let passwordHash: string | undefined;
+  if (input.password) {
+    passwordHash = await bcrypt.hash(input.password, passwordSaltRounds);
+  }
+
+  let accountStatus: AccountStatus | undefined;
+  let profileStatus: RegionalAdminStatus | undefined;
+  if (input.status) {
+    accountStatus = input.status === "active" ? AccountStatus.active : AccountStatus.disabled;
+    profileStatus = input.status === "active" ? RegionalAdminStatus.active : RegionalAdminStatus.inactive;
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    const user = await tx.user.update({
+      where: { id },
+      data: {
+        ...(input.fullName ? { fullName: input.fullName } : {}),
+        ...(input.email ? { email: input.email } : {}),
+        ...(passwordHash ? { passwordHash } : {}),
+        ...(accountStatus ? { accountStatus } : {})
+      }
+    });
+
+    const profile = await tx.regionalAdminProfile.update({
+      where: { userId: id },
+      data: {
+        ...(input.regionId ? { regionId: input.regionId } : {}),
+        ...(profileStatus ? { status: profileStatus } : {})
+      },
+      include: {
+        region: true
+      }
+    });
+
+    return {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      createdAt: user.createdAt,
+      status: profile.status,
+      regionId: profile.regionId,
+      region: {
+        id: profile.region.id,
+        code: profile.region.code,
+        name: profile.region.name
+      }
+    };
+  });
+}
+
+export async function deleteRegionalAdmin(id: string) {
+  const existingUser = await prisma.user.findFirst({
+    where: { id, roles: { has: RoleCode.regional_admin }, deletedAt: null }
+  });
+
+  if (!existingUser) {
+    throw new ApiError(404, "Regional Admin not found");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        accountStatus: AccountStatus.disabled
+      }
+    });
+
+    await tx.regionalAdminProfile.update({
+      where: { userId: id },
+      data: {
+        deletedAt: new Date(),
+        status: RegionalAdminStatus.inactive
+      }
+    });
+  });
+
+  return { success: true };
+}
+
