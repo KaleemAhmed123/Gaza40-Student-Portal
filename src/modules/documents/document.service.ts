@@ -136,10 +136,14 @@ export async function getDownloadableDocument(input: {
           });
           if (offer) hasAccess = true;
         } else {
-          const hasOfferInRegion = await prisma.offer.findFirst({
-            where: { studentUserId: document.ownerUserId, regionId, deletedAt: null }
-          });
-          if (hasOfferInRegion) hasAccess = true;
+          if (profileDocumentTypes.has(document.documentType)) {
+            hasAccess = true;
+          } else {
+            const hasOfferInRegion = await prisma.offer.findFirst({
+              where: { studentUserId: document.ownerUserId, regionId, deletedAt: null }
+            });
+            if (hasOfferInRegion) hasAccess = true;
+          }
         }
       } else if (user.roles.includes(RoleCode.mentor)) {
         if (document.offerId) {
