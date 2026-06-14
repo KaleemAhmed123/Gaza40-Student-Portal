@@ -24,8 +24,10 @@ import { healthRouter } from "./modules/health/health.routes";
 import { adminOfferRouter } from "./modules/offers/admin-offer.routes";
 import { studentOfferRouter } from "./modules/offers/student-offer.routes";
 import { mentorOfferRouter } from "./modules/offers/mentor-offer.routes";
+import { mentorStudentRouter } from "./modules/offers/mentor-student.routes";
 import { adminQueryRouter, mentorQueryRouter, studentQueryRouter } from "./modules/queries/query.routes";
 import { studentProfileRouter } from "./modules/student-profile/student-profile.routes";
+import { universityRouter } from "./modules/offers/university.routes";
 
 export const app = express();
 
@@ -66,7 +68,9 @@ app.use("/api/admin/announcements", adminAnnouncementRouter);
 app.use("/api/admin/audit-logs", adminAuditLogRouter);
 app.use("/api/mentor/dashboard", mentorDashboardRouter);
 app.use("/api/mentor/offers", mentorOfferRouter);
+app.use("/api/mentor/students", mentorStudentRouter);
 app.use("/api/mentor/queries", mentorQueryRouter);
+app.use("/api/universities", universityRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

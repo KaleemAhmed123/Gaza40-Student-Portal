@@ -81,6 +81,8 @@ enum DocumentType {
   consent_form
   offer_letter
   scholarship_letter
+  signature
+  english_proficiency
 }
 
 enum DocumentStatus {

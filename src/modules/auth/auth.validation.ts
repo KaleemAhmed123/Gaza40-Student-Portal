@@ -1,10 +1,26 @@
 import { z } from "zod";
 
+function minAgeDate(years: number) {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - years);
+  return d;
+}
+
+const dateOfBirthSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Date of birth must be in YYYY-MM-DD format")
+  .refine((val) => {
+    const dob = new Date(val);
+    return !isNaN(dob.getTime()) && dob <= minAgeDate(16);
+  }, "You must be at least 16 years old to register")
+  .optional();
+
 export const registerStudentSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   fullName: z.string().min(1),
-  hasOfferSelfReported: z.boolean().default(false)
+  hasOfferSelfReported: z.boolean().default(false),
+  dateOfBirth: dateOfBirthSchema,
 });
 
 export const registerVolunteerSchema = z.object({
@@ -13,8 +29,10 @@ export const registerVolunteerSchema = z.object({
   fullName: z.string().min(1),
   phone: z.string().optional(),
   preferredRegionId: z.string().uuid("Invalid region ID").optional(),
-  universityAffiliation: z.string().optional()
+  universityAffiliation: z.string().optional(),
+  dateOfBirth: dateOfBirthSchema,
 });
+
 
 export const loginSchema = z.object({
   email: z.string().email(),

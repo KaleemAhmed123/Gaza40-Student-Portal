@@ -5,11 +5,15 @@ import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
 import { ApiError } from "../../shared/http";
 import {
+  imageOnlyDocumentTypes,
   localPrivateBucket,
+  mentorVisibleDocumentTypes,
   offerDocumentTypes,
   privateUploadRoot,
-  profileDocumentTypes
+  profileDocumentTypes,
+  signatureMaxUploadSizeBytes
 } from "./document.constants";
+
 
 export async function saveDocument(input: {
   userId: string;
@@ -26,6 +30,11 @@ export async function saveDocument(input: {
   }
 
   const storageKey = path.join(privateUploadRoot, input.file.filename).replace(/\\/g, "/");
+
+  // Enforce 1MB limit for signature documents
+  if (imageOnlyDocumentTypes.has(input.documentType) && input.file.size > signatureMaxUploadSizeBytes) {
+    throw new ApiError(400, "Signature image must be under 1MB");
+  }
 
   if (profileDocumentTypes.has(input.documentType) && input.offerId) {
     throw new ApiError(400, "Profile documents cannot be attached to offers");
@@ -146,7 +155,10 @@ export async function getDownloadableDocument(input: {
           }
         }
       } else if (user.roles.includes(RoleCode.mentor)) {
-        if (document.offerId) {
+        // Mentors cannot access passport or national_id documents
+        if (!mentorVisibleDocumentTypes.has(document.documentType)) {
+          // Do not grant access — fall through to hasAccess = false
+        } else if (document.offerId) {
           const offer = await prisma.offer.findFirst({
             where: { id: document.offerId, mentorId: input.requesterUserId, deletedAt: null }
           });

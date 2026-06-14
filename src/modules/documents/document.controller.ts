@@ -48,3 +48,23 @@ export const downloadDocumentHandler = asyncHandler(async (req, res) => {
 
   res.download(absolutePath, document.originalFilename);
 });
+
+export const previewDocumentHandler = asyncHandler(async (req, res) => {
+  const { document, absolutePath } = await getDownloadableDocument({
+    documentId: req.params.id,
+    requesterUserId: req.authUser!.id,
+    ipAddress: req.ip,
+    userAgent: req.get("user-agent")
+  });
+
+  // Set headers for inline browser rendering
+  res.setHeader("Content-Type", document.mimeType);
+  res.setHeader(
+    "Content-Disposition",
+    `inline; filename="${encodeURIComponent(document.originalFilename)}"`
+  );
+  res.setHeader("Cache-Control", "private, max-age=300");
+
+  const stream = await fs.readFile(absolutePath);
+  res.end(stream);
+});

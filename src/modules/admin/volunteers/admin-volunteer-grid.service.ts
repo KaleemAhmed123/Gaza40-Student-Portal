@@ -140,6 +140,13 @@ export async function listAdminVolunteers(userId: string, query: ListAdminVolunt
               }
             }
           }
+        },
+        _count: {
+          select: {
+            mentorOffers: {
+              where: { deletedAt: null }
+            }
+          }
         }
       },
       orderBy: { createdAt: "desc" },
@@ -160,6 +167,20 @@ export async function listAdminVolunteers(userId: string, query: ListAdminVolunt
       }
     })
   ]);
+
+  // Get distinct student counts per mentor (from mentorOffers)
+  const mentorIds = volunteers.map((v) => v.id);
+  const studentCountRows = await prisma.offer.groupBy({
+    by: ["mentorId"],
+    where: {
+      mentorId: { in: mentorIds },
+      deletedAt: null
+    },
+    _count: { studentUserId: true }
+  });
+  const studentCountByMentorId = new Map(
+    studentCountRows.map((row) => [row.mentorId!, row._count.studentUserId])
+  );
 
   const summary = {
     total,
@@ -188,7 +209,9 @@ export async function listAdminVolunteers(userId: string, query: ListAdminVolunt
       accountStatus: volunteer.accountStatus,
       createdAt: volunteer.createdAt,
       profile: volunteer.volunteerProfile,
-      regionalAdminProfile: volunteer.regionalAdminProfile
+      regionalAdminProfile: volunteer.regionalAdminProfile,
+      assignedOffersCount: volunteer._count.mentorOffers,
+      assignedStudentCount: studentCountByMentorId.get(volunteer.id) ?? 0
     })),
     summary,
     pagination: { page: query.page, pageSize: query.pageSize, total }

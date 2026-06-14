@@ -219,6 +219,7 @@ export async function registerStudent(input: RegisterStudentInput) {
       email: input.email,
       passwordHash,
       fullName: input.fullName,
+      ...(input.dateOfBirth ? { dateOfBirth: new Date(input.dateOfBirth) } : {}),
       roles: [RoleCode.student],
       studentProfile: {
         create: {
@@ -245,6 +246,7 @@ export async function registerVolunteer(input: RegisterVolunteerInput) {
       passwordHash,
       fullName: input.fullName,
       phone: input.phone,
+      ...(input.dateOfBirth ? { dateOfBirth: new Date(input.dateOfBirth) } : {}),
       roles: [RoleCode.mentor],
       volunteerProfile: {
         create: {

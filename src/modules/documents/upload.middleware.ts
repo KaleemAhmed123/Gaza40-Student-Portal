@@ -6,9 +6,13 @@ import { ApiError } from "../../shared/http";
 import {
   allowedFileExtensions,
   allowedMimeTypes,
+  imageOnlyDocumentTypes,
+  imageOnlyMimeTypes,
   maxUploadSizeBytes,
-  privateUploadRoot
+  privateUploadRoot,
+  signatureMaxUploadSizeBytes
 } from "./document.constants";
+import { DocumentType } from "@prisma/client";
 
 const uploadDirectory = path.join(process.cwd(), privateUploadRoot);
 mkdirSync(uploadDirectory, { recursive: true });
@@ -25,14 +29,26 @@ export const uploadSingleDocument = multer({
   limits: {
     fileSize: maxUploadSizeBytes
   },
-  fileFilter: (_req, file, callback) => {
+  fileFilter: (req, file, callback) => {
     const extension = path.extname(file.originalname).toLowerCase();
+    const docType = req.body?.documentType as DocumentType | undefined;
+    const isImageOnly = docType && imageOnlyDocumentTypes.has(docType);
 
-    if (!allowedMimeTypes.has(file.mimetype) || !allowedFileExtensions.has(extension)) {
-      callback(new ApiError(400, "Only PDF, JPG, JPEG, and PNG files are allowed"));
-      return;
+    if (isImageOnly) {
+      // Signature uploads: images only
+      if (!imageOnlyMimeTypes.has(file.mimetype) || ![".jpg", ".jpeg", ".png"].includes(extension)) {
+        callback(new ApiError(400, "Signature uploads must be JPG or PNG images only"));
+        return;
+      }
+      // 1MB limit will be enforced in service layer after upload
+    } else {
+      if (!allowedMimeTypes.has(file.mimetype) || !allowedFileExtensions.has(extension)) {
+        callback(new ApiError(400, "Only PDF, JPG, JPEG, and PNG files are allowed"));
+        return;
+      }
     }
 
     callback(null, true);
   }
 }).single("file");
+

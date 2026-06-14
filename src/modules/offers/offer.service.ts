@@ -1100,3 +1100,200 @@ export async function listMentorOffers(userId: string) {
   const financialRules = offers.length > 0 ? await getOfferFinancialRules() : undefined;
   return Promise.all(offers.map((offer) => formatOffer(offer, financialRules)));
 }
+
+export async function getMentorStudentDetails(mentorId: string, studentId: string) {
+  const mentor = await prisma.user.findFirst({
+    where: {
+      id: mentorId,
+      deletedAt: null,
+      accountStatus: "active",
+      roles: { has: RoleCode.mentor }
+    }
+  });
+
+  if (!mentor) {
+    throw new ApiError(403, "You do not have permission to access student details");
+  }
+
+  const assignedOffers = await prisma.offer.findMany({
+    where: { studentUserId: studentId, mentorId, deletedAt: null },
+    include: {
+      region: true,
+      university: true,
+      documents: {
+        where: { status: "active", deletedAt: null }
+      },
+      queries: {
+        where: { deletedAt: null },
+        include: {
+          assignedTo: { select: { id: true, fullName: true, email: true } },
+          messages: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: "asc" }
+          }
+        }
+      }
+    },
+    orderBy: { createdAt: "desc" }
+  });
+
+  if (assignedOffers.length === 0) {
+    throw new ApiError(403, "You do not have permission to access details of this student");
+  }
+
+  const student = await prisma.user.findFirst({
+    where: { id: studentId, roles: { has: RoleCode.student }, deletedAt: null },
+    include: {
+      studentProfile: {
+        include: {
+          documents: {
+            where: {
+              status: "active",
+              deletedAt: null,
+              NOT: {
+                documentType: { in: ["passport", "national_id"] }
+              }
+            }
+          }
+        }
+      },
+      documents: {
+        where: {
+          status: "active",
+          deletedAt: null,
+          NOT: {
+            documentType: { in: ["passport", "national_id"] }
+          }
+        }
+      },
+      studentQueries: {
+        where: {
+          deletedAt: null,
+          OR: [
+            { assignedToUserId: mentorId },
+            { offerId: { in: assignedOffers.map(o => o.id) } }
+          ]
+        },
+        include: {
+          region: true,
+          assignedTo: { select: { id: true, fullName: true, email: true } },
+          messages: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: "asc" }
+          }
+        },
+        orderBy: { createdAt: "desc" }
+      }
+    }
+  });
+
+  if (!student) {
+    throw new ApiError(404, "Student not found");
+  }
+
+  const timeline: any[] = [];
+
+  timeline.push({
+    id: "create_account",
+    title: "Account Registered",
+    description: `Registered student account with email ${student.email}.`,
+    timestamp: student.createdAt,
+    type: "registration"
+  });
+
+  if (student.studentProfile) {
+    if (student.studentProfile.createdAt) {
+      timeline.push({
+        id: "create_profile",
+        title: "Profile Onboarding Initiated",
+        description: "Student started entering onboarding details.",
+        timestamp: student.studentProfile.createdAt,
+        type: "profile"
+      });
+    }
+    if (student.studentProfile.profileStatus === "approved" && student.studentProfile.reviewedAt) {
+      timeline.push({
+        id: "profile_approved",
+        title: "Profile Onboarding Approved",
+        description: `Profile approved by administrative review.`,
+        timestamp: student.studentProfile.reviewedAt,
+        type: "profile_approved"
+      });
+    } else if (student.studentProfile.profileStatus === "under_review" && student.studentProfile.updatedAt) {
+      timeline.push({
+        id: "profile_submitted",
+        title: "Profile Onboarding Submitted",
+        description: "Profile submitted for administrative verification.",
+        timestamp: student.studentProfile.updatedAt,
+        type: "profile_review"
+      });
+    }
+  }
+
+  for (const doc of student.documents) {
+    timeline.push({
+      id: `doc_${doc.id}`,
+      title: "Document Uploaded",
+      description: `Uploaded document of type '${doc.documentType}' (${doc.originalFilename}).`,
+      timestamp: doc.createdAt,
+      type: "document"
+    });
+  }
+
+  for (const offer of assignedOffers) {
+    timeline.push({
+      id: `offer_created_${offer.id}`,
+      title: "Offer Submitted",
+      description: `Submitted placement offer for ${offer.universityName} (${offer.courseName}, ${offer.courseLevel}).`,
+      timestamp: offer.createdAt,
+      type: "offer"
+    });
+    if (offer.reviewStatus === "approved" && offer.reviewedAt) {
+      timeline.push({
+        id: `offer_approved_${offer.id}`,
+        title: "Offer Placement Approved",
+        description: `Verified and approved placement offer at ${offer.universityName}.`,
+        timestamp: offer.reviewedAt,
+        type: "offer_approved"
+      });
+    }
+  }
+
+  for (const query of student.studentQueries) {
+    timeline.push({
+      id: `query_raised_${query.id}`,
+      title: "Query Raised",
+      description: `Raised assistance query of type '${query.queryType}': "${query.title}".`,
+      timestamp: query.createdAt,
+      type: "query"
+    });
+    if (query.status === "resolved" && query.resolvedAt) {
+      timeline.push({
+        id: `query_resolved_${query.id}`,
+        title: "Query Resolved",
+        description: `Query "${query.title}" was resolved.`,
+        timestamp: query.resolvedAt,
+        type: "query_resolved"
+      });
+    }
+  }
+
+  timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+  return {
+    student: {
+      id: student.id,
+      fullName: student.fullName,
+      email: student.email,
+      phone: student.phone,
+      dateOfBirth: student.dateOfBirth,
+      accountStatus: student.accountStatus,
+      createdAt: student.createdAt,
+      studentProfile: student.studentProfile,
+      documents: student.documents,
+      offers: assignedOffers,
+      queries: student.studentQueries
+    },
+    timeline
+  };
+}
