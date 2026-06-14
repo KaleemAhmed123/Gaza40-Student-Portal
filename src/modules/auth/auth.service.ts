@@ -1,8 +1,15 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import { AuthTokenType, Prisma, RoleCode } from "@prisma/client";
+import { AuthTokenType, RoleCode, AccountStatus } from "../../db/models/enums";
 import { env } from "../../config/env";
-import { prisma } from "../../db/prisma";
+import {
+  userRepository,
+  authTokenRepository,
+  studentProfileRepository,
+  volunteerProfileRepository,
+  regionalAdminProfileRepository,
+  regionRepository
+} from "../../db/repositories";
 import { recordAuditLog } from "../../shared/audit";
 import { sendEmailBestEffort } from "../../shared/email";
 import { ApiError } from "../../shared/http";
@@ -29,51 +36,6 @@ const passwordSaltRounds = 12;
 const passwordResetExpiryMs = 60 * 60 * 1000;
 const emailVerificationExpiryMs = 24 * 60 * 60 * 1000;
 
-const authUserBaseSelect = {
-  id: true,
-  email: true,
-  fullName: true,
-  phone: true,
-  roles: true,
-  accountStatus: true,
-  emailVerifiedAt: true,
-  deletedAt: true
-} satisfies Prisma.UserSelect;
-
-const studentAuthProfileSelect = {
-  id: true,
-  profileStatus: true,
-  hasOfferSelfReported: true,
-  hasVerifiedOffer: true
-} satisfies Prisma.StudentProfileSelect;
-
-const volunteerAuthProfileSelect = {
-  id: true,
-  volunteerStatus: true,
-  universityAffiliation: true,
-  preferredRegionId: true
-} satisfies Prisma.VolunteerProfileSelect;
-
-const regionalAdminAuthProfileSelect = {
-  id: true,
-  regionId: true,
-  status: true,
-  region: {
-    select: {
-      code: true,
-      name: true
-    }
-  }
-} satisfies Prisma.RegionalAdminProfileSelect;
-
-const loginUserSelect = {
-  ...authUserBaseSelect,
-  passwordHash: true
-} satisfies Prisma.UserSelect;
-
-type AuthUserRecord = Prisma.UserGetPayload<{ select: typeof authUserBaseSelect }>;
-type LoginUserRecord = Prisma.UserGetPayload<{ select: typeof loginUserSelect }>;
-
 function createRawToken() {
   return crypto.randomBytes(32).toString("hex");
 }
@@ -96,48 +58,41 @@ async function createAuthToken(input: {
   const token = createRawToken();
   const tokenHash = hashToken(token);
 
-  await prisma.$transaction([
-    prisma.authToken.updateMany({
-      where: {
-        userId: input.userId,
-        type: input.type,
-        usedAt: null,
-        expiresAt: { gt: new Date() }
-      },
-      data: { usedAt: new Date() }
-    }),
-    prisma.authToken.create({
-      data: {
-        userId: input.userId,
-        type: input.type,
-        tokenHash,
-        expiresAt: new Date(Date.now() + input.expiresInMs)
-      }
-    })
-  ]);
+  await authTokenRepository.invalidatePreviousTokens(input.userId, input.type);
+  await authTokenRepository.create({
+    userId: input.userId,
+    type: input.type,
+    tokenHash,
+    expiresAt: new Date(Date.now() + input.expiresInMs)
+  });
 
   return token;
 }
 
 async function consumeAuthToken(input: { token: string; type: AuthTokenType }) {
-  const authToken = await prisma.authToken.findFirst({
-    where: {
+  const authToken = await authTokenRepository.findOne(
+    {
       tokenHash: hashToken(input.token),
       type: input.type,
       usedAt: null,
-      expiresAt: { gt: new Date() }
+      expiresAt: { $gt: new Date() }
     },
-    include: { user: true }
-  });
+    "userId"
+  );
 
-  if (!authToken || authToken.user.deletedAt || authToken.user.accountStatus === "disabled") {
+  const user = authToken?.userId && typeof authToken.userId === "object" ? authToken.userId as any : null;
+
+  if (!authToken || !user || user.deletedAt || user.accountStatus === "disabled") {
     throw new ApiError(400, "Invalid or expired token");
   }
+
+  // Preserve compatibility for callers accessing authToken.user
+  (authToken as any).user = user;
 
   return authToken;
 }
 
-function assertValidAuthUser(user: AuthUserRecord | LoginUserRecord | null) {
+function assertValidAuthUser(user: any) {
   if (!user || user.deletedAt || user.accountStatus === "disabled") {
     throw new ApiError(401, "Invalid user account");
   }
@@ -145,26 +100,18 @@ function assertValidAuthUser(user: AuthUserRecord | LoginUserRecord | null) {
   return user;
 }
 
-async function toAuthUser(user: AuthUserRecord | LoginUserRecord | null) {
+async function toAuthUser(user: any) {
   const validUser = assertValidAuthUser(user);
+  
   const [studentProfile, volunteerProfile, regionalAdminProfile] = await Promise.all([
     validUser.roles.includes(RoleCode.student)
-      ? prisma.studentProfile.findUnique({
-          where: { userId: validUser.id },
-          select: studentAuthProfileSelect
-        })
+      ? studentProfileRepository.findOne({ userId: validUser.id })
       : Promise.resolve(null),
     validUser.roles.includes(RoleCode.mentor)
-      ? prisma.volunteerProfile.findUnique({
-          where: { userId: validUser.id },
-          select: volunteerAuthProfileSelect
-        })
+      ? volunteerProfileRepository.findOne({ userId: validUser.id })
       : Promise.resolve(null),
     validUser.roles.includes(RoleCode.regional_admin)
-      ? prisma.regionalAdminProfile.findUnique({
-          where: { userId: validUser.id },
-          select: regionalAdminAuthProfileSelect
-        })
+      ? regionalAdminProfileRepository.findOne({ userId: validUser.id }, "regionId")
       : Promise.resolve(null)
   ]);
 
@@ -172,14 +119,32 @@ async function toAuthUser(user: AuthUserRecord | LoginUserRecord | null) {
   if (volunteerProfile) {
     let region = null;
     if (volunteerProfile.preferredRegionId) {
-      region = await prisma.region.findUnique({
-        where: { id: volunteerProfile.preferredRegionId },
-        select: { id: true, code: true, name: true }
-      });
+      region = await regionRepository.findById(volunteerProfile.preferredRegionId.toString());
     }
     volunteerProfileWithRegion = {
-      ...volunteerProfile,
+      id: volunteerProfile.id,
+      volunteerStatus: volunteerProfile.volunteerStatus,
+      universityAffiliation: volunteerProfile.universityAffiliation,
+      preferredRegionId: volunteerProfile.preferredRegionId,
       preferredRegion: region
+        ? { id: region.id, code: region.code, name: region.name }
+        : null
+    };
+  }
+
+  let regionalAdminProfileResponse = null;
+  if (regionalAdminProfile) {
+    const region = regionalAdminProfile.regionId && typeof regionalAdminProfile.regionId === "object"
+      ? regionalAdminProfile.regionId as any
+      : null;
+
+    regionalAdminProfileResponse = {
+      id: regionalAdminProfile.id,
+      regionId: region ? region.id : regionalAdminProfile.regionId,
+      status: regionalAdminProfile.status,
+      region: region
+        ? { code: region.code, name: region.name }
+        : null
     };
   }
 
@@ -191,80 +156,76 @@ async function toAuthUser(user: AuthUserRecord | LoginUserRecord | null) {
     roles: validUser.roles,
     accountStatus: validUser.accountStatus,
     emailVerifiedAt: validUser.emailVerifiedAt,
-    studentProfile,
+    studentProfile: studentProfile
+      ? {
+          id: studentProfile.id,
+          profileStatus: studentProfile.profileStatus,
+          hasOfferSelfReported: studentProfile.hasOfferSelfReported,
+          hasVerifiedOffer: studentProfile.hasVerifiedOffer
+        }
+      : null,
     volunteerProfile: volunteerProfileWithRegion,
-    regionalAdminProfile
+    regionalAdminProfile: regionalAdminProfileResponse
   };
 }
 
 async function buildAuthUser(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: authUserBaseSelect
-  });
-
+  const user = await userRepository.findById(userId);
   return toAuthUser(user);
 }
 
 export async function registerStudent(input: RegisterStudentInput) {
-  const existingUser = await prisma.user.findUnique({ where: { email: input.email } });
+  const existingUser = await userRepository.findByEmail(input.email);
   if (existingUser) {
     throw new ApiError(409, "An account with this email already exists");
   }
 
   const passwordHash = await bcrypt.hash(input.password, passwordSaltRounds);
 
-  const user = await prisma.user.create({
-    data: {
-      email: input.email,
-      passwordHash,
-      fullName: input.fullName,
-      ...(input.dateOfBirth ? { dateOfBirth: new Date(input.dateOfBirth) } : {}),
-      roles: [RoleCode.student],
-      studentProfile: {
-        create: {
-          hasOfferSelfReported: input.hasOfferSelfReported
-        }
-      }
-    }
+  const user = await userRepository.create({
+    email: input.email,
+    passwordHash,
+    fullName: input.fullName,
+    dateOfBirth: input.dateOfBirth ? new Date(input.dateOfBirth) : null,
+    roles: [RoleCode.student]
+  });
+
+  await studentProfileRepository.create({
+    userId: user._id,
+    hasOfferSelfReported: input.hasOfferSelfReported
   });
 
   return buildAuthUser(user.id);
 }
 
 export async function registerVolunteer(input: RegisterVolunteerInput) {
-  const existingUser = await prisma.user.findUnique({ where: { email: input.email } });
+  const existingUser = await userRepository.findByEmail(input.email);
   if (existingUser) {
     throw new ApiError(409, "An account with this email already exists");
   }
 
   const passwordHash = await bcrypt.hash(input.password, passwordSaltRounds);
 
-  const user = await prisma.user.create({
-    data: {
-      email: input.email,
-      passwordHash,
-      fullName: input.fullName,
-      phone: input.phone,
-      ...(input.dateOfBirth ? { dateOfBirth: new Date(input.dateOfBirth) } : {}),
-      roles: [RoleCode.mentor],
-      volunteerProfile: {
-        create: {
-          universityAffiliation: input.universityAffiliation,
-          preferredRegionId: input.preferredRegionId
-        }
-      }
-    }
+  const user = await userRepository.create({
+    email: input.email,
+    passwordHash,
+    fullName: input.fullName,
+    phone: input.phone,
+    dateOfBirth: input.dateOfBirth ? new Date(input.dateOfBirth) : null,
+    roles: [RoleCode.mentor]
+  });
+
+  await volunteerProfileRepository.create({
+    userId: user._id,
+    universityAffiliation: input.universityAffiliation,
+    preferredRegionId: input.preferredRegionId || null
   });
 
   return buildAuthUser(user.id);
 }
 
 export async function login(input: LoginInput) {
-  const user = await prisma.user.findUnique({
-    where: { email: input.email },
-    select: loginUserSelect
-  });
+  const user = await userRepository.findOne({ email: input.email.toLowerCase() });
   if (!user || user.deletedAt) {
     throw new ApiError(401, "Invalid email or password");
   }
@@ -274,15 +235,13 @@ export async function login(input: LoginInput) {
     throw new ApiError(401, "Invalid email or password");
   }
 
-  void prisma.user.update({
-    where: { id: user.id },
-    data: { lastLoginAt: new Date() },
-    select: { id: true }
-  }).catch((error) => {
-    console.error(
-      `Failed to update last login timestamp: ${error instanceof Error ? error.message : "Unknown error"}`
-    );
-  });
+  void userRepository
+    .update(user.id, { lastLoginAt: new Date() })
+    .catch((error) => {
+      console.error(
+        `Failed to update last login timestamp: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    });
 
   return toAuthUser(user);
 }
@@ -292,9 +251,9 @@ export async function getCurrentUser(userId: string) {
 }
 
 export async function forgotPassword(input: ForgotPasswordInput) {
-  const user = await prisma.user.findFirst({
-    where: { email: input.email, deletedAt: null, accountStatus: "active" },
-    select: { id: true, email: true, fullName: true }
+  const user = await userRepository.findOne({
+    email: input.email.toLowerCase(),
+    accountStatus: AccountStatus.active
   });
 
   if (!user) {
@@ -323,22 +282,14 @@ export async function resetPassword(input: ResetPasswordInput) {
   });
   const passwordHash = await bcrypt.hash(input.password, passwordSaltRounds);
 
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: authToken.userId },
-      data: { passwordHash }
-    }),
-    prisma.authToken.update({
-      where: { id: authToken.id },
-      data: { usedAt: new Date() }
-    })
-  ]);
+  await userRepository.update(authToken.userId.toString(), { passwordHash });
+  await authTokenRepository.update(authToken.id, { usedAt: new Date() });
 
   await recordAuditLog({
-    actorUserId: authToken.userId,
+    actorUserId: authToken.userId.toString(),
     action: "password_reset_completed",
     entityType: "user",
-    entityId: authToken.userId
+    entityId: authToken.userId.toString()
   });
 
   return { reset: true };
@@ -348,9 +299,9 @@ export async function sendVerificationEmail(
   userId: string,
   input: SendVerificationEmailInput
 ) {
-  const user = await prisma.user.findFirst({
-    where: { id: userId, deletedAt: null, accountStatus: "active" },
-    select: { id: true, email: true, fullName: true, emailVerifiedAt: true }
+  const user = await userRepository.findOne({
+    _id: userId,
+    accountStatus: AccountStatus.active
   });
 
   if (!user) {
@@ -383,22 +334,14 @@ export async function verifyEmail(input: VerifyEmailInput) {
     type: AuthTokenType.email_verification
   });
 
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: authToken.userId },
-      data: { emailVerifiedAt: new Date() }
-    }),
-    prisma.authToken.update({
-      where: { id: authToken.id },
-      data: { usedAt: new Date() }
-    })
-  ]);
+  await userRepository.update(authToken.userId.toString(), { emailVerifiedAt: new Date() });
+  await authTokenRepository.update(authToken.id, { usedAt: new Date() });
 
   await recordAuditLog({
-    actorUserId: authToken.userId,
+    actorUserId: authToken.userId.toString(),
     action: "email_verified",
     entityType: "user",
-    entityId: authToken.userId
+    entityId: authToken.userId.toString()
   });
 
   return { verified: true };

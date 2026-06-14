@@ -1,5 +1,8 @@
-import type { Prisma } from "@prisma/client";
-import { prisma } from "../../db/prisma";
+import {
+  regionRepository,
+  configOptionRepository,
+  universityRepository
+} from "../../db/repositories";
 import { ApiError } from "../../shared/http";
 import type {
   createConfigOptionSchema,
@@ -21,110 +24,103 @@ type UpdateUniversityInput = z.infer<typeof updateUniversitySchema>;
 type ListUniversitiesQuery = z.infer<typeof listUniversitiesQuerySchema>;
 
 export async function listRegions() {
-  return prisma.region.findMany({
-    where: { isActive: true, deletedAt: null },
-    orderBy: { name: "asc" }
-  });
+  return regionRepository.find({ isActive: true }, { sort: { name: "asc" } });
 }
 
 export async function listConfigOptions(groupKey: string) {
-  return prisma.configOption.findMany({
-    where: { groupKey, isActive: true, deletedAt: null },
-    orderBy: [{ sortOrder: "asc" }, { labelEn: "asc" }]
-  });
+  return configOptionRepository.findActiveByGroup(groupKey);
 }
 
 export async function listUniversities(query: ListUniversitiesQuery) {
-  return prisma.university.findMany({
-    where: {
-      isActive: true,
-      deletedAt: null,
-      region: { isActive: true, deletedAt: null },
-      ...(query.regionId ? { regionId: query.regionId } : {}),
-      ...(query.search ? { name: { contains: query.search, mode: "insensitive" } } : {})
-    },
-    include: { region: true },
-    orderBy: { name: "asc" },
-    take: 50
+  // First, find all active region IDs to simulate the join condition
+  const activeRegions = await regionRepository.find({ isActive: true });
+  const activeRegionIds = activeRegions.map((r) => r._id);
+
+  const filter: any = {
+    isActive: true,
+    regionId: { $in: activeRegionIds }
+  };
+
+  if (query.regionId) {
+    filter.regionId = query.regionId;
+  }
+
+  if (query.search) {
+    filter.name = { $regex: query.search, $options: "i" };
+  }
+
+  return universityRepository.find(filter, {
+    populate: "regionId",
+    sort: { name: "asc" },
+    limit: 50
   });
 }
 
 export async function createConfigOption(input: CreateConfigOptionInput) {
-  return prisma.configOption.create({
-    data: {
-      groupKey: input.groupKey,
-      value: input.value,
-      labelEn: input.labelEn,
-      labelAr: input.labelAr,
-      sortOrder: input.sortOrder,
-      isActive: input.isActive,
-      metadata: input.metadata as Prisma.InputJsonValue | undefined
-    }
+  return configOptionRepository.create({
+    groupKey: input.groupKey,
+    value: input.value,
+    labelEn: input.labelEn,
+    labelAr: input.labelAr,
+    sortOrder: input.sortOrder,
+    isActive: input.isActive,
+    metadata: input.metadata
   });
 }
 
 export async function updateConfigOption(id: string, input: UpdateConfigOptionInput) {
   await ensureConfigOption(id);
 
-  return prisma.configOption.update({
-    where: { id },
-    data: {
-      ...input,
-      metadata: input.metadata as Prisma.InputJsonValue | undefined
-    }
+  return configOptionRepository.update(id, {
+    ...input,
+    metadata: input.metadata
   });
 }
 
 export async function deactivateConfigOption(id: string) {
   await ensureConfigOption(id);
 
-  return prisma.configOption.update({
-    where: { id },
-    data: { isActive: false, deletedAt: new Date() }
+  return configOptionRepository.update(id, {
+    isActive: false,
+    deletedAt: new Date()
   });
 }
 
 export async function createRegion(input: CreateRegionInput) {
-  return prisma.region.create({
-    data: {
-      code: input.code,
-      name: input.name,
-      isActive: input.isActive
-    }
+  return regionRepository.create({
+    code: input.code,
+    name: input.name,
+    isActive: input.isActive
   });
 }
 
 export async function updateRegion(id: string, input: UpdateRegionInput) {
   await ensureRegion(id);
 
-  return prisma.region.update({
-    where: { id },
-    data: input
-  });
+  return regionRepository.update(id, input);
 }
 
 export async function deactivateRegion(id: string) {
   await ensureRegion(id);
 
-  return prisma.region.update({
-    where: { id },
-    data: { isActive: false, deletedAt: new Date() }
+  return regionRepository.update(id, {
+    isActive: false,
+    deletedAt: new Date()
   });
 }
 
 export async function createUniversity(input: CreateUniversityInput) {
   await ensureRegion(input.regionId);
 
-  return prisma.university.create({
-    data: {
-      regionId: input.regionId,
-      name: input.name,
-      city: input.city,
-      isLondon: input.isLondon,
-      isActive: input.isActive
-    },
-    include: { region: true }
+  const university = await universityRepository.create({
+    regionId: input.regionId,
+    name: input.name,
+    city: input.city,
+    isLondon: input.isLondon,
+    isActive: input.isActive
   });
+
+  return university.populate("regionId");
 }
 
 export async function updateUniversity(id: string, input: UpdateUniversityInput) {
@@ -134,39 +130,37 @@ export async function updateUniversity(id: string, input: UpdateUniversityInput)
     await ensureRegion(input.regionId);
   }
 
-  return prisma.university.update({
-    where: { id },
-    data: input,
-    include: { region: true }
-  });
+  const university = await universityRepository.update(id, input);
+  return university ? university.populate("regionId") : null;
 }
 
 export async function deactivateUniversity(id: string) {
   await ensureUniversity(id);
 
-  return prisma.university.update({
-    where: { id },
-    data: { isActive: false, deletedAt: new Date() },
-    include: { region: true }
+  const university = await universityRepository.update(id, {
+    isActive: false,
+    deletedAt: new Date()
   });
+
+  return university ? university.populate("regionId") : null;
 }
 
 async function ensureConfigOption(id: string) {
-  const option = await prisma.configOption.findFirst({ where: { id, deletedAt: null } });
+  const option = await configOptionRepository.findById(id);
   if (!option) {
     throw new ApiError(404, "Config option not found");
   }
 }
 
 async function ensureRegion(id: string) {
-  const region = await prisma.region.findFirst({ where: { id, deletedAt: null } });
+  const region = await regionRepository.findById(id);
   if (!region) {
     throw new ApiError(404, "Region not found");
   }
 }
 
 async function ensureUniversity(id: string) {
-  const university = await prisma.university.findFirst({ where: { id, deletedAt: null } });
+  const university = await universityRepository.findById(id);
   if (!university) {
     throw new ApiError(404, "University not found");
   }

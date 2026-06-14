@@ -1,7 +1,13 @@
 import fs from "fs";
 import path from "path";
-import { DocumentStatus, DocumentType, RoleCode } from "@prisma/client";
-import { prisma } from "../../db/prisma";
+import { DocumentStatus, DocumentType, RoleCode, RegionalAdminStatus, AccountStatus } from "../../db/models/enums";
+import {
+  studentProfileRepository,
+  documentRepository,
+  offerRepository,
+  userRepository,
+  regionalAdminProfileRepository
+} from "../../db/repositories";
 import { recordAuditLog } from "../../shared/audit";
 import { ApiError } from "../../shared/http";
 import {
@@ -14,16 +20,13 @@ import {
   signatureMaxUploadSizeBytes
 } from "./document.constants";
 
-
 export async function saveDocument(input: {
   userId: string;
   documentType: DocumentType;
   offerId?: string;
   file: Express.Multer.File;
 }) {
-  const studentProfile = await prisma.studentProfile.findUnique({
-    where: { userId: input.userId }
-  });
+  const studentProfile = await studentProfileRepository.findByUserId(input.userId);
 
   if (!studentProfile || studentProfile.deletedAt) {
     throw new ApiError(404, "Student profile not found");
@@ -44,15 +47,12 @@ export async function saveDocument(input: {
     throw new ApiError(400, "offerId is required for offer documents");
   }
 
-  let offer: { id: string } | null = null;
+  let offer: any = null;
   if (input.offerId) {
-    offer = await prisma.offer.findFirst({
-      where: {
-        id: input.offerId,
-        studentUserId: input.userId,
-        deletedAt: null
-      },
-      select: { id: true }
+    offer = await offerRepository.findOne({
+      _id: input.offerId,
+      studentUserId: input.userId,
+      deletedAt: null
     });
 
     if (!offer) {
@@ -60,44 +60,33 @@ export async function saveDocument(input: {
     }
   }
 
-  return prisma.$transaction(async (tx) => {
-    await tx.document.updateMany({
-      where: {
-        ownerUserId: input.userId,
-        studentProfileId: studentProfile.id,
-        offerId: offer?.id,
-        documentType: input.documentType,
-        status: DocumentStatus.active
-      },
-      data: {
-        status: DocumentStatus.superseded
-      }
-    });
-
-    const document = await tx.document.create({
-      data: {
-        ownerUserId: input.userId,
-        studentProfileId: studentProfile.id,
-        offerId: offer?.id,
-        documentType: input.documentType,
-        originalFilename: input.file.originalname,
-        mimeType: input.file.mimetype,
-        fileSizeBytes: input.file.size,
-        storageBucket: localPrivateBucket,
-        storageKey,
-        uploadedBy: input.userId
-      }
-    });
-
-    if (input.documentType === DocumentType.consent_form) {
-      await tx.studentProfile.update({
-        where: { id: studentProfile.id },
-        data: { consentSigned: true }
-      });
-    }
-
-    return document;
+  // Supersede existing documents of the same type/scope
+  await documentRepository.supersedeDocuments({
+    ownerUserId: input.userId,
+    studentProfileId: studentProfile.id,
+    offerId: offer?.id || null,
+    documentType: input.documentType
   });
+
+  // Create the new document
+  const document = await documentRepository.create({
+    ownerUserId: input.userId,
+    studentProfileId: studentProfile.id,
+    offerId: offer?.id || null,
+    documentType: input.documentType,
+    originalFilename: input.file.originalname,
+    mimeType: input.file.mimetype,
+    fileSizeBytes: input.file.size,
+    storageBucket: localPrivateBucket,
+    storageKey,
+    uploadedBy: input.userId
+  });
+
+  if (input.documentType === DocumentType.consent_form) {
+    await studentProfileRepository.update(studentProfile.id, { consentSigned: true });
+  }
+
+  return document;
 }
 
 export async function getDownloadableDocument(input: {
@@ -106,52 +95,55 @@ export async function getDownloadableDocument(input: {
   ipAddress?: string;
   userAgent?: string;
 }) {
-  const document = await prisma.document.findFirst({
-    where: {
-      id: input.documentId,
-      status: DocumentStatus.active,
-      deletedAt: null
-    }
+  const document = await documentRepository.findOne({
+    _id: input.documentId,
+    status: DocumentStatus.active,
+    deletedAt: null
   });
 
   if (!document) {
     throw new ApiError(404, "Document not found");
   }
 
-  let hasAccess = document.ownerUserId === input.requesterUserId;
+  let hasAccess = document.ownerUserId.toString() === input.requesterUserId;
 
   if (!hasAccess) {
-    const user = await prisma.user.findFirst({
-      where: {
-        id: input.requesterUserId,
-        deletedAt: null,
-        accountStatus: "active"
-      },
-      include: { regionalAdminProfile: true }
+    const user = await userRepository.findOne({
+      _id: input.requesterUserId,
+      deletedAt: null,
+      accountStatus: AccountStatus.active
     });
 
     if (user) {
       if (user.roles.includes(RoleCode.master_admin)) {
         hasAccess = true;
-      } else if (
-        user.roles.includes(RoleCode.regional_admin) &&
-        user.regionalAdminProfile?.status === "active" &&
-        !user.regionalAdminProfile.deletedAt
-      ) {
-        const regionId = user.regionalAdminProfile.regionId;
-        if (document.offerId) {
-          const offer = await prisma.offer.findFirst({
-            where: { id: document.offerId, regionId, deletedAt: null }
-          });
-          if (offer) hasAccess = true;
-        } else {
-          if (profileDocumentTypes.has(document.documentType)) {
-            hasAccess = true;
-          } else {
-            const hasOfferInRegion = await prisma.offer.findFirst({
-              where: { studentUserId: document.ownerUserId, regionId, deletedAt: null }
+      } else if (user.roles.includes(RoleCode.regional_admin)) {
+        const rap = await regionalAdminProfileRepository.findOne({
+          userId: input.requesterUserId,
+          status: RegionalAdminStatus.active,
+          deletedAt: null
+        });
+
+        if (rap) {
+          const regionId = rap.regionId.toString();
+          if (document.offerId) {
+            const offer = await offerRepository.findOne({
+              _id: document.offerId.toString(),
+              regionId,
+              deletedAt: null
             });
-            if (hasOfferInRegion) hasAccess = true;
+            if (offer) hasAccess = true;
+          } else {
+            if (profileDocumentTypes.has(document.documentType)) {
+              hasAccess = true;
+            } else {
+              const hasOfferInRegion = await offerRepository.findOne({
+                studentUserId: document.ownerUserId.toString(),
+                regionId,
+                deletedAt: null
+              });
+              if (hasOfferInRegion) hasAccess = true;
+            }
           }
         }
       } else if (user.roles.includes(RoleCode.mentor)) {
@@ -159,13 +151,17 @@ export async function getDownloadableDocument(input: {
         if (!mentorVisibleDocumentTypes.has(document.documentType)) {
           // Do not grant access — fall through to hasAccess = false
         } else if (document.offerId) {
-          const offer = await prisma.offer.findFirst({
-            where: { id: document.offerId, mentorId: input.requesterUserId, deletedAt: null }
+          const offer = await offerRepository.findOne({
+            _id: document.offerId.toString(),
+            mentorId: input.requesterUserId,
+            deletedAt: null
           });
           if (offer) hasAccess = true;
         } else {
-          const hasAssignedOffer = await prisma.offer.findFirst({
-            where: { studentUserId: document.ownerUserId, mentorId: input.requesterUserId, deletedAt: null }
+          const hasAssignedOffer = await offerRepository.findOne({
+            studentUserId: document.ownerUserId.toString(),
+            mentorId: input.requesterUserId,
+            deletedAt: null
           });
           if (hasAssignedOffer) hasAccess = true;
         }
@@ -188,10 +184,10 @@ export async function getDownloadableDocument(input: {
     entityType: "document",
     entityId: document.id,
     metadata: {
-      ownerUserId: document.ownerUserId,
+      ownerUserId: document.ownerUserId.toString(),
       documentType: document.documentType,
-      offerId: document.offerId,
-      studentProfileId: document.studentProfileId
+      offerId: document.offerId ? document.offerId.toString() : null,
+      studentProfileId: document.studentProfileId ? document.studentProfileId.toString() : null
     },
     ipAddress: input.ipAddress,
     userAgent: input.userAgent

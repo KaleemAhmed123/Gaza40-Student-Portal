@@ -1,4 +1,4 @@
-import { DocumentType } from "@prisma/client";
+import { DocumentType } from "../../db/models/enums";
 import { z } from "zod";
 import { allowedDocumentTypes } from "./document.constants";
 

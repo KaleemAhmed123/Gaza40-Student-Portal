@@ -1,5 +1,9 @@
-import { DocumentStatus, DocumentType, PassportStatus, ProfileStatus, RoleCode } from "@prisma/client";
-import { prisma } from "../../db/prisma";
+import { DocumentStatus, DocumentType, PassportStatus, ProfileStatus, RoleCode } from "../../db/models/enums";
+import {
+  studentProfileRepository,
+  documentRepository,
+  userRepository
+} from "../../db/repositories";
 import { recordAuditLog } from "../../shared/audit";
 import { ApiError } from "../../shared/http";
 import { notifyMasterAdminsOfProfileSubmission } from "../../shared/review-email";
@@ -18,92 +22,34 @@ const passportRequiresDocument = new Set<PassportStatus>([
   PassportStatus.valid_expires_within_year
 ]);
 
-function formatProfile(profile: Awaited<ReturnType<typeof getStudentProfileByUserId>>) {
+function formatProfile(profile: any) {
   return profile;
 }
 
 export async function getStudentProfileByUserId(userId: string) {
-  const profile = await prisma.studentProfile.findUnique({
-    where: { userId },
-    include: {
-      documents: {
-        where: {
-          status: DocumentStatus.active,
-          deletedAt: null
-        },
-        select: {
-          id: true,
-          documentType: true,
-          originalFilename: true,
-          mimeType: true,
-          fileSizeBytes: true,
-          createdAt: true
-        },
-        orderBy: { createdAt: "desc" }
-      }
-    }
-  });
+  let profile = await studentProfileRepository.findOne({ userId }, null, true);
 
-  if (profile?.deletedAt) {
-    return prisma.studentProfile.update({
-      where: { id: profile.id },
-      data: { deletedAt: null },
-      include: {
-        documents: {
-          where: {
-            status: DocumentStatus.active,
-            deletedAt: null
-          },
-          select: {
-            id: true,
-            documentType: true,
-            originalFilename: true,
-            mimeType: true,
-            fileSizeBytes: true,
-            createdAt: true
-          },
-          orderBy: { createdAt: "desc" }
-        }
-      }
-    });
+  if (profile && profile.deletedAt) {
+    profile = await studentProfileRepository.update(
+      profile.id,
+      { deletedAt: null },
+      true
+    );
   }
 
   if (!profile) {
-    const user = await prisma.user.findFirst({
-      where: {
-        id: userId,
-        deletedAt: null,
-        roles: { has: RoleCode.student }
-      },
-      select: { id: true }
+    const user = await userRepository.findOne({
+      _id: userId,
+      roles: RoleCode.student
     });
 
     if (!user) {
       throw new ApiError(404, "Student profile not found");
     }
 
-    return prisma.studentProfile.create({
-      data: {
-        userId,
-        hasOfferSelfReported: false
-      },
-      include: {
-        documents: {
-          where: {
-            status: DocumentStatus.active,
-            deletedAt: null
-          },
-          select: {
-            id: true,
-            documentType: true,
-            originalFilename: true,
-            mimeType: true,
-            fileSizeBytes: true,
-            createdAt: true
-          },
-          orderBy: { createdAt: "desc" }
-        }
-      }
+    profile = await studentProfileRepository.create({
+      userId,
+      hasOfferSelfReported: false
     });
   }
 
@@ -111,7 +57,26 @@ export async function getStudentProfileByUserId(userId: string) {
     throw new ApiError(404, "Student profile not found");
   }
 
-  return profile;
+  // Fetch active documents to embed them in the returned profile object
+  const documents = await documentRepository.find(
+    {
+      studentProfileId: profile.id,
+      status: DocumentStatus.active
+    },
+    { sort: { createdAt: -1 } }
+  );
+
+  const profileObj = profile.toObject ? profile.toObject() : profile;
+  profileObj.documents = documents.map((d) => ({
+    id: d.id,
+    documentType: d.documentType,
+    originalFilename: d.originalFilename,
+    mimeType: d.mimeType,
+    fileSizeBytes: d.fileSizeBytes,
+    createdAt: d.createdAt
+  }));
+
+  return profileObj;
 }
 
 export async function updateMyStudentProfile(userId: string, input: UpdateStudentProfileInput) {
@@ -121,29 +86,32 @@ export async function updateMyStudentProfile(userId: string, input: UpdateStuden
     throw new ApiError(409, "Profile cannot be edited in its current status");
   }
 
-  const updatedProfile = await prisma.studentProfile.update({
-    where: { id: profile.id },
-    data: input,
-    include: {
-      documents: {
-        where: {
-          status: DocumentStatus.active,
-          deletedAt: null
-        },
-        select: {
-          id: true,
-          documentType: true,
-          originalFilename: true,
-          mimeType: true,
-          fileSizeBytes: true,
-          createdAt: true
-        },
-        orderBy: { createdAt: "desc" }
-      }
-    }
-  });
+  const updatedProfile = await studentProfileRepository.update(profile.id, input);
 
-  return formatProfile(updatedProfile);
+  if (!updatedProfile) {
+    throw new ApiError(404, "Student profile not found");
+  }
+
+  // Fetch active documents
+  const documents = await documentRepository.find(
+    {
+      studentProfileId: updatedProfile.id,
+      status: DocumentStatus.active
+    },
+    { sort: { createdAt: -1 } }
+  );
+
+  const profileObj = updatedProfile.toObject ? updatedProfile.toObject() : updatedProfile;
+  profileObj.documents = documents.map((d) => ({
+    id: d.id,
+    documentType: d.documentType,
+    originalFilename: d.originalFilename,
+    mimeType: d.mimeType,
+    fileSizeBytes: d.fileSizeBytes,
+    createdAt: d.createdAt
+  }));
+
+  return formatProfile(profileObj);
 }
 
 function requireProfileField(value: unknown, fieldName: string, missingFields: string[]) {
@@ -153,13 +121,9 @@ function requireProfileField(value: unknown, fieldName: string, missingFields: s
 }
 
 async function getActiveDocumentTypes(studentProfileId: string) {
-  const documents = await prisma.document.findMany({
-    where: {
-      studentProfileId,
-      status: DocumentStatus.active,
-      deletedAt: null
-    },
-    select: { documentType: true }
+  const documents = await documentRepository.find({
+    studentProfileId,
+    status: DocumentStatus.active
   });
 
   return new Set(documents.map((document) => document.documentType));
@@ -230,16 +194,17 @@ export async function submitMyStudentProfile(input: {
     );
   }
 
-  const submittedProfile = await prisma.studentProfile.update({
-    where: { id: profile.id },
-    data: {
-      profileStatus: ProfileStatus.under_review,
-      consentSigned: true,
-      reviewNotes: null,
-      reviewedAt: null,
-      reviewedBy: null
-    }
+  const submittedProfile = await studentProfileRepository.update(profile.id, {
+    profileStatus: ProfileStatus.under_review,
+    consentSigned: true,
+    reviewNotes: null,
+    reviewedAt: null,
+    reviewedBy: null
   });
+
+  if (!submittedProfile) {
+    throw new ApiError(404, "Student profile not found");
+  }
 
   await recordAuditLog({
     actorUserId: input.userId,
@@ -250,10 +215,7 @@ export async function submitMyStudentProfile(input: {
     userAgent: input.userAgent
   });
 
-  const student = await prisma.user.findUnique({
-    where: { id: input.userId },
-    select: { fullName: true, email: true }
-  });
+  const student = await userRepository.findOne({ _id: input.userId });
 
   if (student) {
     void notifyMasterAdminsOfProfileSubmission({
