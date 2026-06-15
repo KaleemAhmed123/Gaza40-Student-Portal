@@ -85,7 +85,9 @@ export async function saveDocument(input: {
         fileSizeBytes: input.file.size,
         storageBucket: localPrivateBucket,
         storageKey,
-        uploadedBy: input.userId
+        status: DocumentStatus.active,
+        uploadedBy: input.userId,
+        deletedAt: null
       }
     });
 
