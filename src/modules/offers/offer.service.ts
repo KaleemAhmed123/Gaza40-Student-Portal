@@ -1,4 +1,4 @@
-import { DocumentStatus, DocumentType, OfferReviewStatus, Prisma, ProfileStatus, RoleCode, QueryStatus } from "@prisma/client";
+import { DocumentStatus, DocumentType, OfferReviewStatus, Prisma, ProfileStatus, RoleCode, QueryStatus, VolunteerStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
 import { toCsv } from "../../shared/csv";
@@ -1048,13 +1048,18 @@ export async function assignMentorToOffer(input: {
       deletedAt: null,
       accountStatus: "active",
       roles: { has: RoleCode.mentor },
-      volunteerProfile: { deletedAt: null }
+      volunteerProfile: {
+        is: {
+          deletedAt: null,
+          volunteerStatus: VolunteerStatus.approved
+        }
+      }
     },
     select: { id: true, fullName: true, email: true }
   });
 
   if (!mentor) {
-    throw new ApiError(400, "Assigned user must be an active mentor");
+    throw new ApiError(400, "Assigned user must be an approved mentor");
   }
 
   // Directly attach mentor to the offer — no Query creation

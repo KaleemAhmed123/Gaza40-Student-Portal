@@ -308,7 +308,7 @@ export async function getAdminDashboard(userId: string) {
 }
 
 export async function getMentorDashboard(userId: string) {
-  const [queryCounts, recentQueries] = await Promise.all([
+  const [queryCounts, recentQueries, offerCounts, recentOffers] = await Promise.all([
     prisma.query.groupBy({
       by: ["status"],
       where: { assignedToUserId: userId, deletedAt: null },
@@ -335,10 +335,40 @@ export async function getMentorDashboard(userId: string) {
       },
       orderBy: { updatedAt: "desc" },
       take: 5
+    }),
+    prisma.offer.groupBy({
+      by: ["reviewStatus"],
+      where: { mentorId: userId, deletedAt: null },
+      orderBy: { reviewStatus: "asc" },
+      _count: { id: true }
+    }),
+    prisma.offer.findMany({
+      where: { mentorId: userId, deletedAt: null },
+      select: {
+        id: true,
+        universityName: true,
+        courseName: true,
+        reviewStatus: true,
+        updatedAt: true,
+        student: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phone: true
+          }
+        },
+        region: { select: { id: true, name: true } }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 5
     })
   ]);
 
   const byStatus = countRows(queryCounts.map((row) => ({ key: row.status, count: groupCount(row._count) })));
+  const offersByStatus = countRows(
+    offerCounts.map((row) => ({ key: row.reviewStatus, count: groupCount(row._count) }))
+  );
 
   return {
     counts: {
@@ -346,10 +376,15 @@ export async function getMentorDashboard(userId: string) {
         total: Object.values(byStatus).reduce((sum, count) => sum + count, 0),
         openOrAssigned: (byStatus[QueryStatus.open] ?? 0) + (byStatus[QueryStatus.assigned] ?? 0),
         byStatus
+      },
+      assignedOffers: {
+        total: Object.values(offersByStatus).reduce((sum, count) => sum + count, 0),
+        byStatus: offersByStatus
       }
     },
     recent: {
-      assignedQueries: recentQueries
+      assignedQueries: recentQueries,
+      assignedOffers: recentOffers
     }
   };
 }

@@ -118,16 +118,31 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
           dateOfBirth: true,
           studentProfile: {
             select: {
-              dateOfBirth: true
+              dateOfBirth: true,
+              locationInGaza: true,
+              passportStatus: true,
+              consentSigned: true,
+              profileStatus: true,
+              hasVerifiedOffer: true
             }
           },
           studentOffers: {
             where: { regionId: scope.regionId, deletedAt: null },
             select: {
               id: true,
+              regionId: true,
               universityName: true,
               courseName: true,
-              reviewStatus: true
+              courseField: true,
+              courseLevel: true,
+              reviewStatus: true,
+              region: {
+                select: {
+                  id: true,
+                  code: true,
+                  name: true
+                }
+              }
             },
             orderBy: { updatedAt: "desc" }
           }
@@ -147,6 +162,7 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
         email: student.email,
         phone: student.phone,
         dateOfBirth: student.studentProfile?.dateOfBirth ?? student.dateOfBirth,
+        profile: student.studentProfile,
         offerCountInRegion: student.studentOffers.length,
         offers: student.studentOffers
       })),
