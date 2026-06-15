@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import type { SignOptions } from "jsonwebtoken";
-import type { RoleCode } from "../../db/models/enums";
+import type { RoleCode } from "@prisma/client";
 import { env } from "../../config/env";
 import type { AuthUser } from "../../middleware/auth.middleware";
 

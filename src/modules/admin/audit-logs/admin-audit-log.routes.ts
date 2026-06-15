@@ -1,4 +1,4 @@
-import { RoleCode } from "../../../db/models/enums";
+import { RoleCode } from "@prisma/client";
 import { Router } from "express";
 import { requireActiveDbRole, requireAuth } from "../../../middleware/auth.middleware";
 import { getAuditLogHandler, listAuditLogsHandler } from "./admin-audit-log.controller";

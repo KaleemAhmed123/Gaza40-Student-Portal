@@ -1,5 +1,5 @@
 import { Router } from "express";
-import mongoose from "mongoose";
+import { prisma } from "../../db/prisma";
 import { asyncHandler, sendSuccess } from "../../shared/http";
 
 export const healthRouter = Router();
@@ -11,10 +11,7 @@ healthRouter.get("/", (_req, res) => {
 healthRouter.get(
   "/db",
   asyncHandler(async (_req, res) => {
-    if (mongoose.connection.readyState === 1) {
-      sendSuccess(res, { status: "ok", database: "reachable" });
-    } else {
-      res.status(500).json({ status: "error", database: "unreachable" });
-    }
+    await prisma.$queryRaw`SELECT 1`;
+    sendSuccess(res, { status: "ok", database: "reachable" });
   })
 );

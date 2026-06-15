@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
-import { RoleCode, AccountStatus } from "../db/models/enums";
-import { userRepository } from "../db/repositories";
+import type { RoleCode } from "@prisma/client";
+import { prisma } from "../db/prisma";
 import { ApiError } from "../shared/http";
 import { verifyAccessToken } from "../modules/auth/token";
 
@@ -58,11 +58,14 @@ export function requireActiveDbRole(roleCode: RoleCode) {
       return;
     }
 
-    userRepository
-      .findOne({
-        _id: req.authUser.id,
-        accountStatus: AccountStatus.active,
-        roles: roleCode
+    prisma.user
+      .findFirst({
+        where: {
+          id: req.authUser.id,
+          deletedAt: null,
+          accountStatus: "active",
+          roles: { has: roleCode }
+        }
       })
       .then((activeUser) => {
         if (!activeUser) {
@@ -83,11 +86,14 @@ export function requireAnyActiveDbRole(roleCodes: RoleCode[]) {
       return;
     }
 
-    userRepository
-      .findOne({
-        _id: req.authUser.id,
-        accountStatus: AccountStatus.active,
-        roles: { $in: roleCodes }
+    prisma.user
+      .findFirst({
+        where: {
+          id: req.authUser.id,
+          deletedAt: null,
+          accountStatus: "active",
+          roles: { hasSome: roleCodes }
+        }
       })
       .then((activeUser) => {
         if (!activeUser) {

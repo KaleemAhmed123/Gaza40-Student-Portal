@@ -1,7 +1,4 @@
-import {
-  announcementRepository,
-  configOptionRepository
-} from "../../db/repositories";
+import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
 import { ApiError } from "../../shared/http";
 import type {
@@ -11,48 +8,28 @@ import type {
   UpdateAnnouncementInput
 } from "./announcement.validation";
 
-const announcementPopulate = {
-  path: "createdByUserId",
-  select: "fullName email"
-};
-
-function mapAnnouncement(doc: any) {
-  if (!doc) return null;
-  const obj = doc.toObject ? doc.toObject() : doc;
-  
-  // Resolve createdBy object to match Prisma output structure
-  let createdBy = null;
-  if (obj.createdByUserId && typeof obj.createdByUserId === "object") {
-    createdBy = {
-      id: obj.createdByUserId.id || obj.createdByUserId._id?.toString(),
-      fullName: obj.createdByUserId.fullName,
-      email: obj.createdByUserId.email
-    };
+const announcementInclude = {
+  createdBy: {
+    select: {
+      id: true,
+      fullName: true,
+      email: true
+    }
   }
-
-  return {
-    id: obj.id,
-    title: obj.title,
-    body: obj.body,
-    category: obj.category,
-    isPublished: obj.isPublished,
-    publishedAt: obj.publishedAt,
-    createdAt: obj.createdAt,
-    updatedAt: obj.updatedAt,
-    deletedAt: obj.deletedAt,
-    createdBy
-  };
-}
+};
 
 async function ensureCategory(category?: string) {
   if (!category) {
     return;
   }
 
-  const option = await configOptionRepository.findOne({
-    groupKey: "announcement_category",
-    value: category,
-    isActive: true
+  const option = await prisma.configOption.findFirst({
+    where: {
+      groupKey: "announcement_category",
+      value: category,
+      isActive: true,
+      deletedAt: null
+    }
   });
 
   if (!option) {
@@ -61,7 +38,10 @@ async function ensureCategory(category?: string) {
 }
 
 async function ensureAnnouncement(id: string) {
-  const announcement = await announcementRepository.findById(id, announcementPopulate);
+  const announcement = await prisma.announcement.findFirst({
+    where: { id, deletedAt: null },
+    include: announcementInclude
+  });
 
   if (!announcement) {
     throw new ApiError(404, "Announcement not found");
@@ -71,52 +51,44 @@ async function ensureAnnouncement(id: string) {
 }
 
 export async function listPublishedAnnouncements(query: ListAnnouncementsQuery) {
-  const filter: any = { isPublished: true };
-  if (query.category) {
-    filter.category = query.category;
-  }
-
-  const docs = await announcementRepository.find(filter, {
-    populate: announcementPopulate,
-    sort: { publishedAt: -1, createdAt: -1 }
+  return prisma.announcement.findMany({
+    where: {
+      deletedAt: null,
+      isPublished: true,
+      ...(query.category ? { category: query.category } : {})
+    },
+    include: announcementInclude,
+    orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }]
   });
-
-  return docs.map(mapAnnouncement);
 }
 
 export async function getPublishedAnnouncement(id: string) {
-  const announcement = await announcementRepository.findOne(
-    { _id: id, isPublished: true },
-    announcementPopulate
-  );
+  const announcement = await prisma.announcement.findFirst({
+    where: { id, deletedAt: null, isPublished: true },
+    include: announcementInclude
+  });
 
   if (!announcement) {
     throw new ApiError(404, "Announcement not found");
   }
 
-  return mapAnnouncement(announcement);
+  return announcement;
 }
 
 export async function listAdminAnnouncements(query: ListAdminAnnouncementsQuery) {
-  const filter: any = {};
-  if (query.category) {
-    filter.category = query.category;
-  }
-  if (query.isPublished !== undefined) {
-    filter.isPublished = query.isPublished;
-  }
-
-  const docs = await announcementRepository.find(filter, {
-    populate: announcementPopulate,
-    sort: { updatedAt: -1, createdAt: -1 }
+  return prisma.announcement.findMany({
+    where: {
+      deletedAt: null,
+      ...(query.category ? { category: query.category } : {}),
+      ...(query.isPublished === undefined ? {} : { isPublished: query.isPublished })
+    },
+    include: announcementInclude,
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }]
   });
-
-  return docs.map(mapAnnouncement);
 }
 
 export async function getAdminAnnouncement(id: string) {
-  const announcement = await ensureAnnouncement(id);
-  return mapAnnouncement(announcement);
+  return ensureAnnouncement(id);
 }
 
 export async function createAnnouncement(input: {
@@ -128,13 +100,16 @@ export async function createAnnouncement(input: {
   await ensureCategory(input.data.category);
 
   const isPublished = input.data.isPublished ?? false;
-  const announcement = await announcementRepository.create({
-    title: input.data.title,
-    body: input.data.body,
-    category: input.data.category,
-    createdByUserId: input.userId,
-    isPublished,
-    publishedAt: isPublished ? new Date() : undefined
+  const announcement = await prisma.announcement.create({
+    data: {
+      title: input.data.title,
+      body: input.data.body,
+      category: input.data.category,
+      createdByUserId: input.userId,
+      isPublished,
+      publishedAt: isPublished ? new Date() : undefined
+    },
+    include: announcementInclude
   });
 
   await recordAuditLog({
@@ -147,8 +122,7 @@ export async function createAnnouncement(input: {
     userAgent: input.userAgent
   });
 
-  const populated = await announcement.populate(announcementPopulate);
-  return mapAnnouncement(populated);
+  return announcement;
 }
 
 export async function updateAnnouncement(input: {
@@ -164,17 +138,17 @@ export async function updateAnnouncement(input: {
   const publishNow = input.data.isPublished === true && !announcement.isPublished;
   const unpublishNow = input.data.isPublished === false;
 
-  const updatedAnnouncement = await announcementRepository.update(input.announcementId, {
-    title: input.data.title,
-    body: input.data.body,
-    category: input.data.category,
-    isPublished: input.data.isPublished,
-    publishedAt: publishNow ? new Date() : unpublishNow ? null : undefined
+  const updatedAnnouncement = await prisma.announcement.update({
+    where: { id: announcement.id },
+    data: {
+      title: input.data.title,
+      body: input.data.body,
+      category: input.data.category,
+      isPublished: input.data.isPublished,
+      publishedAt: publishNow ? new Date() : unpublishNow ? null : undefined
+    },
+    include: announcementInclude
   });
-
-  if (!updatedAnnouncement) {
-    throw new ApiError(404, "Announcement not found");
-  }
 
   await recordAuditLog({
     actorUserId: input.userId,
@@ -186,8 +160,7 @@ export async function updateAnnouncement(input: {
     userAgent: input.userAgent
   });
 
-  const populated = await updatedAnnouncement.populate(announcementPopulate);
-  return mapAnnouncement(populated);
+  return updatedAnnouncement;
 }
 
 export async function deleteAnnouncement(input: {
@@ -198,14 +171,14 @@ export async function deleteAnnouncement(input: {
 }) {
   const announcement = await ensureAnnouncement(input.announcementId);
 
-  const deletedAnnouncement = await announcementRepository.update(input.announcementId, {
-    isPublished: false,
-    deletedAt: new Date()
+  const deletedAnnouncement = await prisma.announcement.update({
+    where: { id: announcement.id },
+    data: {
+      isPublished: false,
+      deletedAt: new Date()
+    },
+    include: announcementInclude
   });
-
-  if (!deletedAnnouncement) {
-    throw new ApiError(404, "Announcement not found");
-  }
 
   await recordAuditLog({
     actorUserId: input.userId,
@@ -216,6 +189,5 @@ export async function deleteAnnouncement(input: {
     userAgent: input.userAgent
   });
 
-  const populated = await deletedAnnouncement.populate(announcementPopulate);
-  return mapAnnouncement(populated);
+  return deletedAnnouncement;
 }
