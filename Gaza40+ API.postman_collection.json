@@ -5844,37 +5844,37 @@
                      {
                          "key":  "regionId",
                          "value":  "",
-                         "description":  "Region UUID from GET /api/config/regions."
+                         "description":  "Region ObjectId from GET /api/config/regions."
                      },
                      {
                          "key":  "otherRegionId",
                          "value":  "",
-                         "description":  "Region UUID different from the seeded regional admin region."
+                         "description":  "Region ObjectId different from the seeded regional admin region."
                      },
                      {
                          "key":  "adminUserId",
                          "value":  "",
-                         "description":  "Admin user UUID for audit log actor filters."
+                         "description":  "Admin user ObjectId for audit log actor filters."
                      },
                      {
                          "key":  "offerId",
                          "value":  "",
-                         "description":  "Offer UUID."
+                         "description":  "Offer ObjectId."
                      },
                      {
                          "key":  "volunteerId",
                          "value":  "",
-                         "description":  "Volunteer user UUID from GET /api/admin/volunteers."
+                         "description":  "Volunteer user ObjectId from GET /api/admin/volunteers."
                      },
                      {
                          "key":  "queryId",
                          "value":  "",
-                         "description":  "Query UUID from POST /api/queries or admin query list."
+                         "description":  "Query ObjectId from POST /api/queries or admin query list."
                      },
                      {
                          "key":  "auditLogId",
                          "value":  "",
-                         "description":  "Audit log UUID from GET /api/admin/audit-logs."
+                         "description":  "Audit log ObjectId from GET /api/admin/audit-logs."
                      },
                      {
                          "key":  "resetToken",
@@ -5889,17 +5889,17 @@
                      {
                          "key":  "mentorId",
                          "value":  "",
-                         "description":  "Active mentor/volunteer user UUID used when assigning a query."
+                         "description":  "Active mentor/volunteer user ObjectId used when assigning a query."
                      },
                      {
                          "key":  "announcementId",
                          "value":  "",
-                         "description":  "Announcement UUID."
+                         "description":  "Announcement ObjectId."
                      },
                      {
                          "key":  "draftAnnouncementId",
                          "value":  "",
-                         "description":  "Draft announcement UUID for negative public access tests."
+                         "description":  "Draft announcement ObjectId for negative public access tests."
                      }
                  ]
 }

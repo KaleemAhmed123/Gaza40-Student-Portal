@@ -17,7 +17,8 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:seed:admin": "tsx prisma/seed-admin.ts",
     "prisma:seed:regional-admin": "tsx prisma/seed-regional-admin.ts",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "mongo:backfill-deleted-at": "tsx scripts/backfill-mongo-deleted-at.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",

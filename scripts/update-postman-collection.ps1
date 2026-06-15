@@ -573,18 +573,18 @@ $desiredVariables = @(
   @{ key = "studentCookies"; value = ""; description = "Optional manual Cookie header value for student session. Postman cookie jar also works." }
   @{ key = "regionalCookies"; value = ""; description = "Optional manual Cookie header value for regional admin session. Postman cookie jar also works." }
   @{ key = "volunteerCookies"; value = ""; description = "Optional manual Cookie header value for volunteer/mentor session. Postman cookie jar also works." }
-  @{ key = "regionId"; value = ""; description = "Region UUID from GET /api/config/regions." }
-  @{ key = "otherRegionId"; value = ""; description = "Region UUID different from the seeded regional admin region." }
-  @{ key = "adminUserId"; value = ""; description = "Admin user UUID for audit log actor filters." }
-  @{ key = "offerId"; value = ""; description = "Offer UUID." }
-  @{ key = "volunteerId"; value = ""; description = "Volunteer user UUID from GET /api/admin/volunteers." }
-  @{ key = "queryId"; value = ""; description = "Query UUID from POST /api/queries or admin query list." }
-  @{ key = "auditLogId"; value = ""; description = "Audit log UUID from GET /api/admin/audit-logs." }
+  @{ key = "regionId"; value = ""; description = "Region ObjectId from GET /api/config/regions." }
+  @{ key = "otherRegionId"; value = ""; description = "Region ObjectId different from the seeded regional admin region." }
+  @{ key = "adminUserId"; value = ""; description = "Admin user ObjectId for audit log actor filters." }
+  @{ key = "offerId"; value = ""; description = "Offer ObjectId." }
+  @{ key = "volunteerId"; value = ""; description = "Volunteer user ObjectId from GET /api/admin/volunteers." }
+  @{ key = "queryId"; value = ""; description = "Query ObjectId from POST /api/queries or admin query list." }
+  @{ key = "auditLogId"; value = ""; description = "Audit log ObjectId from GET /api/admin/audit-logs." }
   @{ key = "resetToken"; value = ""; description = "Password reset token copied from email link." }
   @{ key = "verificationToken"; value = ""; description = "Email verification token copied from email link." }
-  @{ key = "mentorId"; value = ""; description = "Active mentor/volunteer user UUID used when assigning a query." }
-  @{ key = "announcementId"; value = ""; description = "Announcement UUID." }
-  @{ key = "draftAnnouncementId"; value = ""; description = "Draft announcement UUID for negative public access tests." }
+  @{ key = "mentorId"; value = ""; description = "Active mentor/volunteer user ObjectId used when assigning a query." }
+  @{ key = "announcementId"; value = ""; description = "Announcement ObjectId." }
+  @{ key = "draftAnnouncementId"; value = ""; description = "Draft announcement ObjectId for negative public access tests." }
 )
 
 $variables = @()
