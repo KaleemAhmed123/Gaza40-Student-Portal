@@ -1,10 +1,10 @@
 import { Router } from "express";
-import { requireAuth } from "../../middleware/auth.middleware";
+import { requireActiveMentor, requireAuth } from "../../middleware/auth.middleware";
 import { listMentorOffersHandler, reviewMentorOfferHandler } from "./mentor-offer.controller";
 
 export const mentorOfferRouter = Router();
 
-mentorOfferRouter.use(requireAuth);
+mentorOfferRouter.use(requireAuth, requireActiveMentor);
 
 // GET /api/mentor/offers - List all offers assigned to the logged-in mentor
 mentorOfferRouter.get("/", listMentorOffersHandler);

@@ -1,6 +1,6 @@
 import { RoleCode } from "@prisma/client";
 import { Router } from "express";
-import { requireAuth, requireRole } from "../../middleware/auth.middleware";
+import { requireActiveMentor, requireAuth, requireRole } from "../../middleware/auth.middleware";
 import {
   getAdminDashboardHandler,
   getMentorDashboardHandler,
@@ -28,6 +28,6 @@ adminDashboardRouter.get(
 mentorDashboardRouter.get(
   "/",
   requireAuth,
-  requireRole([RoleCode.mentor]),
+  requireActiveMentor,
   getMentorDashboardHandler
 );

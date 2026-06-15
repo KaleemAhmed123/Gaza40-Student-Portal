@@ -1,6 +1,6 @@
 import { RoleCode } from "@prisma/client";
 import { Router } from "express";
-import { requireAuth, requireRole } from "../../middleware/auth.middleware";
+import { requireActiveMentor, requireAuth, requireRole } from "../../middleware/auth.middleware";
 import {
   addAdminQueryMessageHandler,
   assignQueryHandler,
@@ -39,7 +39,7 @@ adminQueryRouter.patch("/:id/assign", assignQueryHandler);
 adminQueryRouter.post("/:id/messages", addAdminQueryMessageHandler);
 adminQueryRouter.patch("/:id/resolve", resolveAdminQueryHandler);
 
-mentorQueryRouter.use(requireAuth, requireRole([RoleCode.mentor]));
+mentorQueryRouter.use(requireAuth, requireActiveMentor);
 mentorQueryRouter.get("/", listMentorQueriesHandler);
 mentorQueryRouter.get("/:id", getMentorQueryHandler);
 mentorQueryRouter.patch("/:id/accept", acceptMentorQueryHandler);

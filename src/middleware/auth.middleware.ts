@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import type { RoleCode } from "@prisma/client";
+import { RoleCode, VolunteerStatus, type RoleCode as RoleCodeType } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { ApiError } from "../shared/http";
 import { verifyAccessToken } from "../modules/auth/token";
@@ -7,7 +7,7 @@ import { verifyAccessToken } from "../modules/auth/token";
 export type AuthUser = {
   id: string;
   email: string;
-  roles: RoleCode[];
+  roles: RoleCodeType[];
 };
 
 declare global {
@@ -51,7 +51,7 @@ export function requireRole(allowedRoles: string[]) {
   };
 }
 
-export function requireActiveDbRole(roleCode: RoleCode) {
+export function requireActiveDbRole(roleCode: RoleCodeType) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.authUser) {
       next(new ApiError(401, "Authentication required"));
@@ -79,7 +79,7 @@ export function requireActiveDbRole(roleCode: RoleCode) {
   };
 }
 
-export function requireAnyActiveDbRole(roleCodes: RoleCode[]) {
+export function requireAnyActiveDbRole(roleCodes: RoleCodeType[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.authUser) {
       next(new ApiError(401, "Authentication required"));
@@ -105,4 +105,36 @@ export function requireAnyActiveDbRole(roleCodes: RoleCode[]) {
       })
       .catch(next);
   };
+}
+
+export function requireActiveMentor(req: Request, _res: Response, next: NextFunction) {
+  if (!req.authUser) {
+    next(new ApiError(401, "Authentication required"));
+    return;
+  }
+
+  prisma.user
+    .findFirst({
+      where: {
+        id: req.authUser.id,
+        deletedAt: null,
+        accountStatus: "active",
+        roles: { has: RoleCode.mentor },
+        volunteerProfile: {
+          is: {
+            deletedAt: null,
+            volunteerStatus: VolunteerStatus.approved
+          }
+        }
+      }
+    })
+    .then((activeMentor) => {
+      if (!activeMentor) {
+        next(new ApiError(403, "Mentor account is not active yet"));
+        return;
+      }
+
+      next();
+    })
+    .catch(next);
 }

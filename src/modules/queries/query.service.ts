@@ -1,4 +1,4 @@
-import { QueryStatus, RegionalAdminStatus, RoleCode } from "@prisma/client";
+import { QueryStatus, RegionalAdminStatus, RoleCode, VolunteerStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
 import { sendEmailBestEffort } from "../../shared/email";
@@ -407,13 +407,18 @@ export async function assignQuery(input: {
       deletedAt: null,
       accountStatus: "active",
       roles: { has: RoleCode.mentor },
-      volunteerProfile: { deletedAt: null }
+      volunteerProfile: {
+        is: {
+          deletedAt: null,
+          volunteerStatus: VolunteerStatus.approved
+        }
+      }
     },
     select: { id: true, email: true }
   });
 
   if (!assignee) {
-    throw new ApiError(400, "Assigned user must be an active mentor");
+    throw new ApiError(400, "Assigned user must be an approved mentor");
   }
 
   const updatedQuery = await prisma.query.update({
