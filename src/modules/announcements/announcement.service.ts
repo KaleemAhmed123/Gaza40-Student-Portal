@@ -107,7 +107,8 @@ export async function createAnnouncement(input: {
       category: input.data.category,
       createdByUserId: input.userId,
       isPublished,
-      publishedAt: isPublished ? new Date() : undefined
+      publishedAt: isPublished ? new Date() : undefined,
+      deletedAt: null
     },
     include: announcementInclude
   });

@@ -85,7 +85,8 @@ export async function getStudentProfileByUserId(userId: string) {
     return prisma.studentProfile.create({
       data: {
         userId,
-        hasOfferSelfReported: false
+        hasOfferSelfReported: false,
+        deletedAt: null
       },
       include: {
         documents: {

@@ -323,7 +323,8 @@ export async function createMyOffer(userId: string, input: OfferInput) {
       studentUserId: userId,
       regionId: region.id,
       universityId: university?.id,
-      ...toOfferData(input)
+      ...toOfferData(input),
+      deletedAt: null
     },
     include: offerInclude
   });

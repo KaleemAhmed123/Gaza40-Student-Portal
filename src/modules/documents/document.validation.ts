@@ -1,5 +1,6 @@
 import { DocumentType } from "@prisma/client";
 import { z } from "zod";
+import { objectIdSchema } from "../../shared/validation";
 import { allowedDocumentTypes } from "./document.constants";
 
 export const uploadDocumentSchema = z.object({
@@ -7,5 +8,5 @@ export const uploadDocumentSchema = z.object({
     (documentType) => allowedDocumentTypes.includes(documentType),
     "Unsupported document type"
   ),
-  offerId: z.string().uuid().optional()
+  offerId: objectIdSchema.optional()
 });

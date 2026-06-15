@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { objectIdSchema } from "../../shared/validation";
 
 export const offerInputSchema = z.object({
-  regionId: z.string().uuid().optional(),
-  universityId: z.string().uuid().optional(),
+  regionId: objectIdSchema.optional(),
+  universityId: objectIdSchema.optional(),
   universityCountry: z.string().min(1).optional(),
   universityName: z.string().min(1),
   courseName: z.string().min(1),
@@ -34,7 +35,7 @@ export const reviewOfferSchema = z.object({
 });
 
 export const listAdminOffersQuerySchema = z.object({
-  regionId: z.string().uuid().optional(),
+  regionId: objectIdSchema.optional(),
   status: z.enum(["draft", "under_review", "approved", "changes_requested", "rejected", "removed"]).optional(),
   offerType: z.string().min(1).optional(),
   universityName: z.string().min(1).optional(),
@@ -51,7 +52,7 @@ export const listAdminOffersQuerySchema = z.object({
 });
 
 export const assignOfferMentorSchema = z.object({
-  mentorId: z.string().uuid("Invalid mentor ID")
+  mentorId: objectIdSchema
 });
 
 export type AssignOfferMentorInput = z.infer<typeof assignOfferMentorSchema>;

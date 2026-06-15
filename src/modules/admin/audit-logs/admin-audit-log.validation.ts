@@ -1,10 +1,11 @@
 import { z } from "zod";
+import { objectIdSchema } from "../../../shared/validation";
 
 export const listAuditLogsQuerySchema = z.object({
   action: z.string().min(1).optional(),
   entityType: z.string().min(1).optional(),
   entityId: z.string().min(1).optional(),
-  actorUserId: z.string().uuid().optional(),
+  actorUserId: objectIdSchema.optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
   page: z.coerce.number().int().positive().default(1),

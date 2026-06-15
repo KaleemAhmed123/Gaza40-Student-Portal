@@ -58,7 +58,8 @@ export async function createConfigOption(input: CreateConfigOptionInput) {
       labelAr: input.labelAr,
       sortOrder: input.sortOrder,
       isActive: input.isActive,
-      metadata: input.metadata as Prisma.InputJsonValue | undefined
+      metadata: input.metadata as Prisma.InputJsonValue | undefined,
+      deletedAt: null
     }
   });
 }
@@ -89,7 +90,8 @@ export async function createRegion(input: CreateRegionInput) {
     data: {
       code: input.code,
       name: input.name,
-      isActive: input.isActive
+      isActive: input.isActive,
+      deletedAt: null
     }
   });
 }
@@ -121,7 +123,8 @@ export async function createUniversity(input: CreateUniversityInput) {
       name: input.name,
       city: input.city,
       isLondon: input.isLondon,
-      isActive: input.isActive
+      isActive: input.isActive,
+      deletedAt: null
     },
     include: { region: true }
   });

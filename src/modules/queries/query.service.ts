@@ -273,7 +273,8 @@ export async function createQuery(input: {
         title: input.data.title,
         message: input.data.message,
         regionId,
-        offerId
+        offerId,
+        deletedAt: null
       }
     });
 
@@ -281,7 +282,8 @@ export async function createQuery(input: {
       data: {
         queryId: createdQuery.id,
         senderUserId: input.userId,
-        message: input.data.message
+        message: input.data.message,
+        deletedAt: null
       }
     });
 
@@ -342,7 +344,8 @@ export async function addStudentMessage(input: {
     data: {
       queryId: query.id,
       senderUserId: input.userId,
-      message: input.data.message
+      message: input.data.message,
+      deletedAt: null
     },
     include: { sender: { select: { id: true, fullName: true, email: true, roles: true } } }
   });
@@ -452,7 +455,8 @@ export async function addAdminMessage(input: {
     data: {
       queryId: query.id,
       senderUserId: input.userId,
-      message: input.data.message
+      message: input.data.message,
+      deletedAt: null
     },
     include: { sender: { select: { id: true, fullName: true, email: true, roles: true } } }
   });
@@ -572,7 +576,8 @@ export async function addMentorMessage(input: {
     data: {
       queryId: query.id,
       senderUserId: input.userId,
-      message: input.data.message
+      message: input.data.message,
+      deletedAt: null
     },
     include: { sender: { select: { id: true, fullName: true, email: true, roles: true } } }
   });

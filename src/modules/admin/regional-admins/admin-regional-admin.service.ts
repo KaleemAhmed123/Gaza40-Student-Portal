@@ -36,7 +36,8 @@ export async function createRegionalAdmin(input: CreateRegionalAdminInput, creat
         passwordHash,
         fullName: input.fullName,
         accountStatus: AccountStatus.active,
-        roles: [RoleCode.regional_admin]
+        roles: [RoleCode.regional_admin],
+        deletedAt: null
       }
     });
 
@@ -44,7 +45,8 @@ export async function createRegionalAdmin(input: CreateRegionalAdminInput, creat
       data: {
         userId: user.id,
         regionId: region.id,
-        assignedByUserId: creatorUserId
+        assignedByUserId: creatorUserId,
+        deletedAt: null
       },
       include: {
         region: true

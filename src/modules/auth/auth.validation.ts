@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { objectIdSchema } from "../../shared/validation";
 
 function minAgeDate(years: number) {
   const d = new Date();
@@ -28,7 +29,7 @@ export const registerVolunteerSchema = z.object({
   password: z.string().min(8),
   fullName: z.string().min(1),
   phone: z.string().optional(),
-  preferredRegionId: z.string().uuid("Invalid region ID").optional(),
+  preferredRegionId: objectIdSchema.optional(),
   universityAffiliation: z.string().optional(),
   dateOfBirth: dateOfBirthSchema,
 });

@@ -1,11 +1,12 @@
 import { z } from "zod";
+import { objectIdSchema } from "../../shared/validation";
 
 export const listOptionsQuerySchema = z.object({
   groupKey: z.string().min(1)
 });
 
 export const listUniversitiesQuerySchema = z.object({
-  regionId: z.string().uuid().optional(),
+  regionId: objectIdSchema.optional(),
   search: z.string().min(1).optional()
 });
 
@@ -30,7 +31,7 @@ export const createRegionSchema = z.object({
 export const updateRegionSchema = createRegionSchema.partial();
 
 export const createUniversitySchema = z.object({
-  regionId: z.string().uuid(),
+  regionId: objectIdSchema,
   name: z.string().min(1),
   city: z.string().min(1).optional(),
   isLondon: z.boolean().optional(),
