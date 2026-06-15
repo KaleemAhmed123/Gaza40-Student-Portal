@@ -8,7 +8,7 @@ Document how a developer runs the project locally.
 
 - Node.js `22.x` is the target version. This matches Render and `package.json`.
 - pnpm `10.18.0` through Corepack. The version is pinned in `package.json`.
-- PostgreSQL database. Supabase Postgres is the current hosted option.
+- MongoDB database. MongoDB Atlas is the current hosted option.
 - A local `.env` file based on `.env.example`.
 
 ## Install
@@ -23,7 +23,6 @@ Use `.env.example` as the template for `.env`.
 
 Required:
 - `DATABASE_URL`
-- `DIRECT_URL`
 - `JWT_ACCESS_SECRET`
 - `CORS_ORIGIN`
 - `FRONTEND_URL`
@@ -40,16 +39,14 @@ Optional:
 
 ## Database
 
-For Supabase, prefer the direct connection URL for local migration and seed work. Prisma migrations can use `DIRECT_URL`, but seed scripts use Prisma Client and therefore connect through `DATABASE_URL`.
+Use a MongoDB connection URL for local and hosted environments.
 
 Recommended local setup:
-- `DATABASE_URL`: direct Supabase URL while running migrations/seeds locally.
-- `DIRECT_URL`: same direct Supabase URL.
-- Later deployment can use the pooler URL for `DATABASE_URL` and direct URL for `DIRECT_URL`.
+- `DATABASE_URL`: local MongoDB URL such as `mongodb://localhost:27017/gaza40`, or a MongoDB Atlas SRV URL in hosted environments.
 
 ```powershell
 corepack pnpm prisma:generate
-corepack pnpm prisma:migrate
+corepack pnpm prisma:push
 corepack pnpm prisma:seed
 corepack pnpm prisma:seed:admin
 corepack pnpm prisma:seed:regional-admin
@@ -68,7 +65,7 @@ corepack pnpm dev
 
 ## Deployment
 
-See `deployment.md` for Render/Supabase deployment notes.
+See `deployment.md` for Render/MongoDB Atlas deployment notes.
 
 Known production gaps are tracked in `mvp-gaps.md`.
 

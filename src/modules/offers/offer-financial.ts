@@ -35,7 +35,7 @@ export type OfferFinancialSummary = {
   livingCostSource: "configured_country_rule" | "manual_living_cost" | "boarding_fees" | "scholarship_covers_living" | "none";
 };
 
-function toNumber(value: Prisma.Decimal | number | string | null | undefined) {
+function toNumber(value: number | string | null | undefined) {
   if (value === null || value === undefined) {
     return undefined;
   }
@@ -138,6 +138,6 @@ export function calculateOfferFinancialSummary(
   };
 }
 
-export function decimalToNumber(value: Prisma.Decimal | number | string | null | undefined) {
+export function decimalToNumber(value: number | string | null | undefined) {
   return toNumber(value) ?? 0;
 }

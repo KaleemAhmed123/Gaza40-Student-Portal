@@ -81,7 +81,7 @@ async function seedRegions() {
       prisma.region.upsert({
         where: { code: region.code },
         update: { name: region.name, isActive: true, deletedAt: null },
-        create: region
+        create: { ...region, deletedAt: null }
       })
     )
   );
@@ -119,7 +119,7 @@ async function seedConfigOptions() {
           metadata: "metadata" in option ? option.metadata : undefined,
           deletedAt: null
         },
-        create: option
+        create: { ...option, deletedAt: null }
       })
     )
   );

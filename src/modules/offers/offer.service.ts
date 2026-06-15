@@ -694,7 +694,7 @@ function emptySummary() {
 function getFundingType(offer: {
   hasScholarship: boolean;
   scholarshipCoversLivingCost: boolean;
-  privateFundingAmount: Prisma.Decimal;
+  privateFundingAmount: number | string;
 }) {
   if (offer.hasScholarship && offer.scholarshipCoversLivingCost) {
     return "fully_funded";

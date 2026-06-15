@@ -11,7 +11,7 @@ corepack pnpm build
 
 ```powershell
 corepack pnpm prisma:generate
-corepack pnpm prisma:migrate
+corepack pnpm prisma:push
 corepack pnpm prisma:seed
 ```
 

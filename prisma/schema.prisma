@@ -3,9 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DIRECT_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
 }
 
 enum RoleCode {
@@ -115,7 +114,7 @@ enum AuthTokenType {
 }
 
 model User {
-  id                    String                 @id @default(uuid())
+  id                    String                 @id @default(auto()) @map("_id") @db.ObjectId
   email                 String                 @unique
   passwordHash          String
   fullName              String
@@ -148,8 +147,8 @@ model User {
 }
 
 model StudentProfile {
-  id                                  String            @id @default(uuid())
-  userId                              String            @unique
+  id                                  String            @id @default(auto()) @map("_id") @db.ObjectId
+  userId                              String            @unique @db.ObjectId
   fullNameEnglish                     String?
   sex                                 Sex?
   dateOfBirth                         DateTime?
@@ -169,7 +168,7 @@ model StudentProfile {
   englishOtherCerts                   String?
   consentSigned                       Boolean           @default(false)
   profileStatus                       ProfileStatus     @default(draft)
-  reviewedBy                          String?
+  reviewedBy                          String?           @db.ObjectId
   reviewedAt                          DateTime?
   reviewNotes                         String?
   createdAt                           DateTime          @default(now())
@@ -182,12 +181,12 @@ model StudentProfile {
 }
 
 model VolunteerProfile {
-  id                    String          @id @default(uuid())
-  userId                String          @unique
+  id                    String          @id @default(auto()) @map("_id") @db.ObjectId
+  userId                String          @unique @db.ObjectId
   universityAffiliation String?
-  preferredRegionId     String?
+  preferredRegionId     String?         @db.ObjectId
   volunteerStatus       VolunteerStatus @default(pending)
-  reviewedBy            String?
+  reviewedBy            String?         @db.ObjectId
   reviewedAt            DateTime?
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
@@ -198,11 +197,11 @@ model VolunteerProfile {
 }
 
 model RegionalAdminProfile {
-  id               String              @id @default(uuid())
-  userId           String              @unique
-  regionId         String
+  id               String              @id @default(auto()) @map("_id") @db.ObjectId
+  userId           String              @unique @db.ObjectId
+  regionId         String              @db.ObjectId
   status           RegionalAdminStatus @default(active)
-  assignedByUserId String?
+  assignedByUserId String?             @db.ObjectId
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
   deletedAt        DateTime?
@@ -215,7 +214,7 @@ model RegionalAdminProfile {
 }
 
 model Region {
-  id                    String                 @id @default(uuid())
+  id                    String                 @id @default(auto()) @map("_id") @db.ObjectId
   code                  String                 @unique @map("countryCode")
   name                  String                 @unique @map("countryName")
   isActive              Boolean                @default(true)
@@ -231,8 +230,8 @@ model Region {
 }
 
 model University {
-  id        String    @id @default(uuid())
-  regionId  String
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  regionId  String    @db.ObjectId
   name      String
   city      String?
   isLondon  Boolean   @default(false)
@@ -249,7 +248,7 @@ model University {
 }
 
 model ConfigOption {
-  id        String    @id @default(uuid())
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
   groupKey  String
   value     String
   labelEn   String
@@ -266,33 +265,33 @@ model ConfigOption {
 }
 
 model Offer {
-  id                          String            @id @default(uuid())
-  studentUserId               String
-  regionId                    String
-  universityId                String?
+  id                          String            @id @default(auto()) @map("_id") @db.ObjectId
+  studentUserId               String            @db.ObjectId
+  regionId                    String            @db.ObjectId
+  universityId                String?           @db.ObjectId
   universityName              String
   courseName                  String
   courseField                 String
   courseLevel                 String
-  durationYears               Decimal           @db.Decimal(5, 2)
+  durationYears               Float
   programmeStartDate          DateTime
   offerType                   String
   conditions                  String?
-  tuitionFeePerYear           Decimal           @db.Decimal(12, 2)
+  tuitionFeePerYear           Float
   courseFeeSourceUrl          String?
   hasScholarship              Boolean           @default(false)
   scholarshipName             String?
-  scholarshipAmountPerYear    Decimal?          @db.Decimal(12, 2)
+  scholarshipAmountPerYear    Float?
   scholarshipCoversLivingCost Boolean           @default(false)
-  privateFundingAmount        Decimal           @default(0) @db.Decimal(12, 2)
+  privateFundingAmount        Float             @default(0)
   privateFundingSource        String?
   livingCostLocationKey       String?
-  livingCostForVisa           Decimal?          @db.Decimal(12, 2)
-  boardingFees                Decimal?          @db.Decimal(12, 2)
+  livingCostForVisa           Float?
+  boardingFees                Float?
   reviewStatus                OfferReviewStatus @default(draft)
   lockedForReview             Boolean           @default(false)
-  mentorId                    String?
-  reviewedBy                  String?
+  mentorId                    String?           @db.ObjectId
+  reviewedBy                  String?           @db.ObjectId
   reviewedAt                  DateTime?
   reviewNotes                 String?
   createdAt                   DateTime          @default(now())
@@ -319,9 +318,9 @@ model Offer {
 }
 
 model OfferRevision {
-  id            String   @id @default(uuid())
-  offerId       String
-  editedBy      String
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  offerId       String   @db.ObjectId
+  editedBy      String   @db.ObjectId
   beforeData    Json
   afterData     Json
   changedFields String[]
@@ -335,10 +334,10 @@ model OfferRevision {
 }
 
 model Document {
-  id               String          @id @default(uuid())
-  ownerUserId      String
-  studentProfileId String?
-  offerId          String?
+  id               String          @id @default(auto()) @map("_id") @db.ObjectId
+  ownerUserId      String          @db.ObjectId
+  studentProfileId String?         @db.ObjectId
+  offerId          String?         @db.ObjectId
   documentType     DocumentType
   originalFilename String
   mimeType         String
@@ -346,7 +345,7 @@ model Document {
   storageBucket    String
   storageKey       String
   status           DocumentStatus  @default(active)
-  uploadedBy       String
+  uploadedBy       String          @db.ObjectId
   createdAt        DateTime        @default(now())
   deletedAt        DateTime?
   owner            User            @relation(fields: [ownerUserId], references: [id])
@@ -361,16 +360,16 @@ model Document {
 }
 
 model Query {
-  id               String         @id @default(uuid())
-  studentUserId    String
-  offerId          String?
-  regionId         String?
+  id               String         @id @default(auto()) @map("_id") @db.ObjectId
+  studentUserId    String         @db.ObjectId
+  offerId          String?        @db.ObjectId
+  regionId         String?        @db.ObjectId
   queryType        String         @map("alertType")
   title            String
   message          String
   status           QueryStatus    @default(open)
-  assignedToUserId String?
-  assignedByUserId String?
+  assignedToUserId String?        @db.ObjectId
+  assignedByUserId String?        @db.ObjectId
   acceptedAt       DateTime?
   resolvedAt       DateTime?
   createdAt        DateTime       @default(now())
@@ -393,9 +392,9 @@ model Query {
 }
 
 model QueryMessage {
-  id           String    @id @default(uuid())
-  queryId      String    @map("alertId")
-  senderUserId String
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  queryId      String    @map("alertId") @db.ObjectId
+  senderUserId String    @db.ObjectId
   message      String
   createdAt    DateTime  @default(now())
   deletedAt    DateTime?
@@ -409,11 +408,11 @@ model QueryMessage {
 }
 
 model Announcement {
-  id              String    @id @default(uuid())
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
   title           String
   body            String
   category        String?
-  createdByUserId String
+  createdByUserId String    @db.ObjectId
   isPublished     Boolean   @default(false)
   publishedAt     DateTime?
   createdAt       DateTime  @default(now())
@@ -427,7 +426,7 @@ model Announcement {
 }
 
 model AppConfig {
-  id          String   @id @default(uuid())
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
   key         String   @unique
   value       Json
   description String?
@@ -437,8 +436,8 @@ model AppConfig {
 }
 
 model AuthToken {
-  id        String        @id @default(uuid())
-  userId    String
+  id        String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String        @db.ObjectId
   tokenHash String        @unique
   type      AuthTokenType
   expiresAt DateTime
@@ -451,8 +450,8 @@ model AuthToken {
 }
 
 model AuditLog {
-  id          String   @id @default(uuid())
-  actorUserId String?
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  actorUserId String?  @db.ObjectId
   action      String
   entityType  String
   entityId    String?

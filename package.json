@@ -13,7 +13,7 @@
     "postinstall": "prisma generate",
     "lint": "tsc -p tsconfig.json --noEmit",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
+    "prisma:push": "prisma db push",
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:seed:admin": "tsx prisma/seed-admin.ts",
     "prisma:seed:regional-admin": "tsx prisma/seed-regional-admin.ts",

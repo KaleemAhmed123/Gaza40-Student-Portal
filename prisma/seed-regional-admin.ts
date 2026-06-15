@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
 
 const regionalAdminEmail = process.env.DEV_REGIONAL_ADMIN_EMAIL || "regional.uk@example.com";
 const regionalAdminPassword = process.env.DEV_REGIONAL_ADMIN_PASSWORD || "RegionalPassword123!";
-const regionalAdminCountry = process.env.DEV_REGIONAL_ADMIN_COUNTRY || "UK";
+const regionalAdminCountry = (process.env.DEV_REGIONAL_ADMIN_COUNTRY || "UK").trim();
 const regionalAdminName = `Development ${regionalAdminCountry} Regional Admin`;
 
 async function main() {
@@ -16,9 +16,14 @@ async function main() {
     throw new Error("Refusing to seed development regional admin while NODE_ENV=production.");
   }
 
-  const region = await prisma.region.findFirst({
-    where: { name: { equals: regionalAdminCountry, mode: "insensitive" }, isActive: true, deletedAt: null }
+  const regions = await prisma.region.findMany({
+    where: { isActive: true }
   });
+  const region = regions.find(
+    (candidate) =>
+      candidate.name.toLowerCase() === regionalAdminCountry.toLowerCase() ||
+      candidate.code.toLowerCase() === regionalAdminCountry.toLowerCase()
+  );
 
   if (!region) {
     throw new Error(`Missing active region for ${regionalAdminCountry}. Run corepack pnpm prisma:seed first.`);
@@ -40,7 +45,8 @@ async function main() {
       passwordHash,
       fullName: regionalAdminName,
       accountStatus: AccountStatus.active,
-      roles: [RoleCode.regional_admin]
+      roles: [RoleCode.regional_admin],
+      deletedAt: null
     }
   });
 
@@ -55,7 +61,8 @@ async function main() {
     create: {
       userId: regionalAdminUser.id,
       regionId: region.id,
-      assignedByUserId: regionalAdminUser.id
+      assignedByUserId: regionalAdminUser.id,
+      deletedAt: null
     }
   });
 

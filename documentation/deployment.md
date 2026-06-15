@@ -1,11 +1,11 @@
 # Deployment Notes
 
-This backend can be deployed for demo/staging on Render with Supabase Postgres.
+This backend can be deployed for demo/staging on Render with MongoDB Atlas.
 
 ## Recommended Demo Stack
 
 - API hosting: Render Web Service.
-- Database: Supabase Postgres.
+- Database: MongoDB Atlas.
 - Email: Resend.
 - Keep-alive: UptimeRobot hitting `/health`.
 
@@ -44,7 +44,6 @@ Required:
 ```env
 NODE_ENV=production
 DATABASE_URL=
-DIRECT_URL=
 JWT_ACCESS_SECRET=
 CORS_ORIGIN=
 FRONTEND_URL=
@@ -67,20 +66,16 @@ UPLOAD_RATE_LIMIT_MAX=60
 
 ## Database Steps
 
-Run migrations before or during deployment:
+Push the Prisma MongoDB schema before or during deployment:
 
 ```powershell
-corepack pnpm prisma:migrate
+corepack pnpm prisma:push
 corepack pnpm prisma:seed
 corepack pnpm prisma:seed:admin
 corepack pnpm prisma:seed:regional-admin
 ```
 
-For production-like deploys, prefer:
-
-```powershell
-corepack pnpm prisma migrate deploy
-```
+Prisma Migrate does not support MongoDB, so do not use `prisma migrate deploy` for this app after the MongoDB migration.
 
 ## Render Free Tier Keep-Alive
 

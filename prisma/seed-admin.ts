@@ -31,7 +31,8 @@ async function main() {
       passwordHash,
       fullName: adminName,
       accountStatus: AccountStatus.active,
-      roles: [RoleCode.master_admin]
+      roles: [RoleCode.master_admin],
+      deletedAt: null
     }
   });
 

@@ -11,7 +11,7 @@ healthRouter.get("/", (_req, res) => {
 healthRouter.get(
   "/db",
   asyncHandler(async (_req, res) => {
-    await prisma.$queryRaw`SELECT 1`;
+    await prisma.$runCommandRaw({ ping: 1 });
     sendSuccess(res, { status: "ok", database: "reachable" });
   })
 );

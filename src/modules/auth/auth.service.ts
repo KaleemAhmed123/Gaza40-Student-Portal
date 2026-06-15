@@ -221,9 +221,11 @@ export async function registerStudent(input: RegisterStudentInput) {
       fullName: input.fullName,
       ...(input.dateOfBirth ? { dateOfBirth: new Date(input.dateOfBirth) } : {}),
       roles: [RoleCode.student],
+      deletedAt: null,
       studentProfile: {
         create: {
-          hasOfferSelfReported: input.hasOfferSelfReported
+          hasOfferSelfReported: input.hasOfferSelfReported,
+          deletedAt: null
         }
       }
     }
@@ -248,10 +250,12 @@ export async function registerVolunteer(input: RegisterVolunteerInput) {
       phone: input.phone,
       ...(input.dateOfBirth ? { dateOfBirth: new Date(input.dateOfBirth) } : {}),
       roles: [RoleCode.mentor],
+      deletedAt: null,
       volunteerProfile: {
         create: {
           universityAffiliation: input.universityAffiliation,
-          preferredRegionId: input.preferredRegionId
+          preferredRegionId: input.preferredRegionId,
+          deletedAt: null
         }
       }
     }
