@@ -6,6 +6,8 @@ import {
   deactivateConfigOption,
   deactivateRegion,
   deactivateUniversity,
+  listAllRegions,
+  listAllUniversities,
   listConfigOptions,
   listRegions,
   listUniversities,
@@ -38,6 +40,17 @@ export const listConfigOptionsHandler = asyncHandler(async (req, res) => {
 export const listUniversitiesHandler = asyncHandler(async (req, res) => {
   const query = listUniversitiesQuerySchema.parse(req.query);
   const universities = await listUniversities(query);
+  sendSuccess(res, { universities });
+});
+
+export const listAllRegionsAdminHandler = asyncHandler(async (_req, res) => {
+  const regions = await listAllRegions();
+  sendSuccess(res, { regions });
+});
+
+export const listAllUniversitiesAdminHandler = asyncHandler(async (req, res) => {
+  const query = listUniversitiesQuerySchema.parse(req.query);
+  const universities = await listAllUniversities(query);
   sendSuccess(res, { universities });
 });
 

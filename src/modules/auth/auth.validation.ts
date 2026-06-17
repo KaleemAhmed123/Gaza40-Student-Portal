@@ -21,7 +21,6 @@ export const registerStudentSchema = z.object({
   password: z.string().min(8),
   fullName: z.string().min(1),
   hasOfferSelfReported: z.boolean().default(false),
-  dateOfBirth: dateOfBirthSchema,
 });
 
 export const registerVolunteerSchema = z.object({

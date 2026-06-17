@@ -8,6 +8,8 @@ import {
   deactivateConfigOptionHandler,
   deactivateRegionHandler,
   deactivateUniversityHandler,
+  listAllRegionsAdminHandler,
+  listAllUniversitiesAdminHandler,
   listConfigOptionsHandler,
   listRegionsHandler,
   listUniversitiesHandler,
@@ -24,6 +26,8 @@ configRouter.get("/universities", listUniversitiesHandler);
 configRouter.get("/options", listConfigOptionsHandler);
 
 adminConfigRouter.use(requireAuth, requireActiveDbRole(RoleCode.master_admin));
+adminConfigRouter.get("/regions", listAllRegionsAdminHandler);
+adminConfigRouter.get("/universities", listAllUniversitiesAdminHandler);
 adminConfigRouter.post("/options", createConfigOptionHandler);
 adminConfigRouter.patch("/options/:id", updateConfigOptionHandler);
 adminConfigRouter.delete("/options/:id", deactivateConfigOptionHandler);

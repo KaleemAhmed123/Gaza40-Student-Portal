@@ -219,7 +219,6 @@ export async function registerStudent(input: RegisterStudentInput) {
       email: input.email,
       passwordHash,
       fullName: input.fullName,
-      ...(input.dateOfBirth ? { dateOfBirth: new Date(input.dateOfBirth) } : {}),
       roles: [RoleCode.student],
       deletedAt: null,
       studentProfile: {

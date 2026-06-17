@@ -18,11 +18,29 @@ const announcementInclude = {
   }
 };
 
+// Static list of valid announcement categories (matches frontend form options)
+const VALID_ANNOUNCEMENT_CATEGORIES = new Set([
+  "misc",
+  "deadlines",
+  "scholarships",
+  "passports",
+  "webinars",
+  "general",
+  "update",
+  "alert"
+]);
+
 async function ensureCategory(category?: string) {
   if (!category) {
     return;
   }
 
+  // First check against static list of known categories (always valid)
+  if (VALID_ANNOUNCEMENT_CATEGORIES.has(category)) {
+    return;
+  }
+
+  // Fall back to DB config options for any dynamically added categories
   const option = await prisma.configOption.findFirst({
     where: {
       groupKey: "announcement_category",
@@ -33,7 +51,7 @@ async function ensureCategory(category?: string) {
   });
 
   if (!option) {
-    throw new ApiError(400, "Announcement category is invalid or inactive");
+    throw new ApiError(400, `Announcement category "${category}" is invalid or inactive`);
   }
 }
 

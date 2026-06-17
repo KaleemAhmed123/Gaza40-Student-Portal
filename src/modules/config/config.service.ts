@@ -27,6 +27,13 @@ export async function listRegions() {
   });
 }
 
+export async function listAllRegions() {
+  return prisma.region.findMany({
+    where: { deletedAt: null },
+    orderBy: { name: "asc" }
+  });
+}
+
 export async function listConfigOptions(groupKey: string) {
   return prisma.configOption.findMany({
     where: { groupKey, isActive: true, deletedAt: null },
@@ -46,6 +53,18 @@ export async function listUniversities(query: ListUniversitiesQuery) {
     include: { region: true },
     orderBy: { name: "asc" },
     take: 50
+  });
+}
+
+export async function listAllUniversities(query: ListUniversitiesQuery) {
+  return prisma.university.findMany({
+    where: {
+      deletedAt: null,
+      ...(query.regionId ? { regionId: query.regionId } : {}),
+      ...(query.search ? { name: { contains: query.search, mode: "insensitive" } } : {})
+    },
+    include: { region: true },
+    orderBy: [{ isActive: "desc" }, { name: "asc" }]
   });
 }
 

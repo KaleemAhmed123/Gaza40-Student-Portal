@@ -11,6 +11,7 @@ import {
   offerDocumentTypes,
   privateUploadRoot,
   profileDocumentTypes,
+  regionalAdminVisibleProfileDocumentTypes,
   signatureMaxUploadSizeBytes
 } from "./document.constants";
 
@@ -147,14 +148,17 @@ export async function getDownloadableDocument(input: {
           });
           if (offer) hasAccess = true;
         } else {
-          if (profileDocumentTypes.has(document.documentType)) {
+          // Regional admins cannot access passport or national_id documents
+          if (regionalAdminVisibleProfileDocumentTypes.has(document.documentType)) {
             hasAccess = true;
-          } else {
+          } else if (!profileDocumentTypes.has(document.documentType)) {
+            // For non-profile documents not tied to an offer, check if student has any offer in this region
             const hasOfferInRegion = await prisma.offer.findFirst({
               where: { studentUserId: document.ownerUserId, regionId, deletedAt: null }
             });
             if (hasOfferInRegion) hasAccess = true;
           }
+          // passport and national_id are in profileDocumentTypes but NOT in regionalAdminVisibleProfileDocumentTypes → access denied
         }
       } else if (user.roles.includes(RoleCode.mentor)) {
         // Mentors cannot access passport or national_id documents
