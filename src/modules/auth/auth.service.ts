@@ -43,6 +43,7 @@ const authUserBaseSelect = {
 const studentAuthProfileSelect = {
   id: true,
   profileStatus: true,
+  reviewNotes: true,
   hasOfferSelfReported: true,
   hasVerifiedOffer: true
 } satisfies Prisma.StudentProfileSelect;

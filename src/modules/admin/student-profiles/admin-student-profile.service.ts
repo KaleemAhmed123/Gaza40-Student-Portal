@@ -1,7 +1,9 @@
 import { DocumentStatus, ProfileStatus } from "@prisma/client";
 import { prisma } from "../../../db/prisma";
 import { recordAuditLog } from "../../../shared/audit";
+import { sendEmailBestEffort } from "../../../shared/email";
 import { ApiError } from "../../../shared/http";
+
 
 const profileInclude = {
   user: {
@@ -116,6 +118,31 @@ export async function reviewStudentProfile(input: {
     ipAddress: input.ipAddress,
     userAgent: input.userAgent
   });
+
+  // Notify the student by email
+  const studentUser = await prisma.user.findUnique({
+    where: { id: profile.userId },
+    select: { email: true, fullName: true }
+  });
+
+  if (studentUser) {
+    if (input.status === ProfileStatus.approved) {
+      sendEmailBestEffort({
+        to: [studentUser.email],
+        subject: "Your Gaza40+ profile has been approved!",
+        text: `Hi ${studentUser.fullName},\n\nGreat news! Your Gaza40+ onboarding profile has been reviewed and approved.\n\nYou can now log in to your student portal to submit university offers, track your application, and connect with your mentor.\n\nLog in at: ${process.env.FRONTEND_URL ?? 'https://app.gaza40.org'}\n\nBest regards,\nThe Gaza40+ Team`
+      });
+    } else if (input.status === ProfileStatus.rejected) {
+      const reasonSection = input.notes
+        ? `\n\nReason for rejection:\n${input.notes}\n`
+        : "";
+      sendEmailBestEffort({
+        to: [studentUser.email],
+        subject: "Update on your Gaza40+ profile review",
+        text: `Hi ${studentUser.fullName},\n\nThank you for submitting your Gaza40+ onboarding profile. Unfortunately, after review, we were unable to approve your profile at this time.${reasonSection}\nIf you have questions or would like to appeal this decision, please contact us at ${process.env.ADMIN_CONTACT_EMAIL ?? 'admin@gaza40.org'}.\n\nBest regards,\nThe Gaza40+ Team`
+      });
+    }
+  }
 
   return reviewedProfile;
 }
