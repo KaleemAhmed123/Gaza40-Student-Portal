@@ -63,7 +63,7 @@ export const previewDocumentHandler = asyncHandler(async (req, res) => {
     "Content-Disposition",
     `inline; filename="${encodeURIComponent(document.originalFilename)}"`
   );
-  res.setHeader("Cache-Control", "private, max-age=300");
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
   const stream = await fs.readFile(absolutePath);
   res.end(stream);
