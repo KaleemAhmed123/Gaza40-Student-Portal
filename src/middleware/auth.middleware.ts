@@ -58,24 +58,12 @@ export function requireActiveDbRole(roleCode: RoleCodeType) {
       return;
     }
 
-    prisma.user
-      .findFirst({
-        where: {
-          id: req.authUser.id,
-          deletedAt: null,
-          accountStatus: "active",
-          roles: { has: roleCode }
-        }
-      })
-      .then((activeUser) => {
-        if (!activeUser) {
-          next(new ApiError(403, "You do not have permission to access this resource"));
-          return;
-        }
+    if (!req.authUser.roles.includes(roleCode)) {
+      next(new ApiError(403, "You do not have permission to access this resource"));
+      return;
+    }
 
-        next();
-      })
-      .catch(next);
+    next();
   };
 }
 
@@ -86,24 +74,13 @@ export function requireAnyActiveDbRole(roleCodes: RoleCodeType[]) {
       return;
     }
 
-    prisma.user
-      .findFirst({
-        where: {
-          id: req.authUser.id,
-          deletedAt: null,
-          accountStatus: "active",
-          roles: { hasSome: roleCodes }
-        }
-      })
-      .then((activeUser) => {
-        if (!activeUser) {
-          next(new ApiError(403, "You do not have permission to access this resource"));
-          return;
-        }
+    const hasRole = req.authUser.roles.some((role) => roleCodes.includes(role));
+    if (!hasRole) {
+      next(new ApiError(403, "You do not have permission to access this resource"));
+      return;
+    }
 
-        next();
-      })
-      .catch(next);
+    next();
   };
 }
 
@@ -113,28 +90,10 @@ export function requireActiveMentor(req: Request, _res: Response, next: NextFunc
     return;
   }
 
-  prisma.user
-    .findFirst({
-      where: {
-        id: req.authUser.id,
-        deletedAt: null,
-        accountStatus: "active",
-        roles: { has: RoleCode.mentor },
-        volunteerProfile: {
-          is: {
-            deletedAt: null,
-            volunteerStatus: VolunteerStatus.approved
-          }
-        }
-      }
-    })
-    .then((activeMentor) => {
-      if (!activeMentor) {
-        next(new ApiError(403, "Mentor account is not active yet"));
-        return;
-      }
+  if (!req.authUser.roles.includes(RoleCode.mentor)) {
+    next(new ApiError(403, "Mentor account is not active yet"));
+    return;
+  }
 
-      next();
-    })
-    .catch(next);
+  next();
 }
