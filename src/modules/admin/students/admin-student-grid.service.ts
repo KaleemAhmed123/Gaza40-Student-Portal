@@ -227,19 +227,21 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
     prisma.user.count({ where }),
     prisma.user.findMany({
       where,
-      select: {
-        studentProfile: {
-          select: {
-            profileStatus: true,
-            passportStatus: true,
-            locationInGaza: true,
-            consentSigned: true,
-            hasVerifiedOffer: true
-          }
-        }
-      }
+      select: { id: true }
     })
   ]);
+
+  const userIds = summaryStudents.map((u) => u.id);
+  const summaryProfiles = await prisma.studentProfile.findMany({
+    where: { userId: { in: userIds } },
+    select: {
+      profileStatus: true,
+      passportStatus: true,
+      locationInGaza: true,
+      consentSigned: true,
+      hasVerifiedOffer: true
+    }
+  });
 
   const summary = {
     total,
@@ -250,13 +252,12 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
     hasVerifiedOffer: { true: 0, false: 0 }
   };
 
-  for (const student of summaryStudents) {
-    const profile = student.studentProfile;
-    addCount(summary.byProfileStatus, profile?.profileStatus);
-    addCount(summary.byPassportStatus, profile?.passportStatus);
-    addCount(summary.byLocationInGaza, profile?.locationInGaza);
-    summary.consentSigned[String(Boolean(profile?.consentSigned)) as "true" | "false"] += 1;
-    summary.hasVerifiedOffer[String(Boolean(profile?.hasVerifiedOffer)) as "true" | "false"] += 1;
+  for (const profile of summaryProfiles) {
+    addCount(summary.byProfileStatus, profile.profileStatus);
+    addCount(summary.byPassportStatus, profile.passportStatus);
+    addCount(summary.byLocationInGaza, profile.locationInGaza);
+    summary.consentSigned[String(Boolean(profile.consentSigned)) as "true" | "false"] += 1;
+    summary.hasVerifiedOffer[String(Boolean(profile.hasVerifiedOffer)) as "true" | "false"] += 1;
   }
 
   return {
