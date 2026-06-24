@@ -1,0 +1,119 @@
+import { asyncHandler, sendSuccess } from "../../shared/http";
+import * as chatService from "./chat.service";
+import { z } from "zod";
+
+const createGroupSchema = z.object({
+  name: z.string().min(1).max(100),
+  memberIds: z.array(z.string()).max(100)
+});
+
+export const getConversationsHandler = asyncHandler(async (req, res) => {
+  const conversations = await chatService.getConversations(req.authUser!.id);
+  sendSuccess(res, { conversations });
+});
+
+export const getDirectChatHandler = asyncHandler(async (req, res) => {
+  const { targetId } = req.body;
+  if (!targetId) throw new Error("targetId is required");
+  
+  const conversation = await chatService.getOrCreateDirectChat(req.authUser!.id, targetId);
+  sendSuccess(res, { conversation });
+});
+
+export const createGroupChatHandler = asyncHandler(async (req, res) => {
+  const input = createGroupSchema.parse(req.body);
+  const conversation = await chatService.createGroupChat(req.authUser!.id, input.name, input.memberIds);
+  sendSuccess(res, { conversation }, 201);
+});
+
+export const addGroupMemberHandler = asyncHandler(async (req, res) => {
+  const { id: conversationId } = req.params;
+  const { targetId } = req.body;
+  if (!targetId) throw new Error("targetId is required");
+
+  const membership = await chatService.addGroupMember(req.authUser!.id, conversationId, targetId);
+  
+  // Notify existing members and the newly added user to refresh their conversations
+  const { emitToConversation, emitToUser } = require("./chat.socket");
+  emitToConversation(conversationId, "conversation_updated", {});
+  emitToUser(targetId, "conversation_updated", {});
+
+  sendSuccess(res, { membership });
+});
+
+export const getMessagesHandler = asyncHandler(async (req, res) => {
+  const { id: conversationId } = req.params;
+  const cursor = req.query.cursor as string | undefined;
+  
+  const messages = await chatService.getMessages(conversationId, req.authUser!.id, 50, cursor);
+  sendSuccess(res, { messages });
+});
+
+export const uploadAttachmentHandler = asyncHandler(async (req, res) => {
+  const { id: conversationId } = req.params;
+  
+  if (!req.file) {
+    throw new Error("File is required");
+  }
+
+  // Validate access
+  const membership = await chatService.getMessages(conversationId, req.authUser!.id, 1);
+  // If getMessages doesn't throw, user has access to conversation
+
+  const { uploadToStorage } = await import("../../shared/storage");
+  const { key, bucket } = await uploadToStorage(
+    req.file.buffer,
+    req.file.originalname,
+    req.file.mimetype,
+    `chat/${conversationId}`
+  );
+
+  sendSuccess(res, { 
+    attachment: {
+      url: `/api/chat/attachments/${conversationId}/${key.split('/').pop()}`, 
+      bucket,
+      name: req.file.originalname,
+      size: req.file.size,
+      type: req.file.mimetype
+    }
+  }, 201);
+});
+
+export const getAttachmentUrlHandler = asyncHandler(async (req, res) => {
+  const { conversationId, fileId } = req.params;
+  
+  // Validate access to conversation
+  await chatService.getMessages(conversationId, req.authUser!.id, 1);
+  
+  const key = `chat/${conversationId}/${fileId}`;
+  const { getSignedStorageUrl } = await import("../../shared/storage");
+  const signedUrl = await getSignedStorageUrl(key);
+  
+  if (!signedUrl) {
+    res.status(404).send("File not found");
+    return;
+  }
+  
+  res.redirect(302, signedUrl);
+});
+
+export const searchUsersHandler = asyncHandler(async (req, res) => {
+  const query = req.query.q as string || "";
+  const role = req.query.role as string || undefined;
+  const regionId = req.query.regionId as string || undefined;
+
+  const users = await chatService.searchChatUsers(query, role, regionId);
+  sendSuccess(res, { users });
+});
+
+export const deleteConversationHandler = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  await chatService.deleteConversation(id, req.authUser!.id);
+  sendSuccess(res, { message: "Conversation deleted successfully" });
+});
+
+export const deleteMessageHandler = asyncHandler(async (req, res) => {
+  const { id, messageId } = req.params;
+  await chatService.deleteMessage(id, messageId, req.authUser!.id);
+  sendSuccess(res, { message: "Message deleted successfully" });
+});
