@@ -9,7 +9,7 @@ import type {
   UpdateVolunteerAssignmentInput
 } from "./admin-volunteer-grid.validation";
 
-type AdminScope =
+export type AdminScope =
   | { role: "master_admin"; regionId?: never }
   | { role: "regional_admin"; regionId: string };
 
@@ -21,7 +21,7 @@ function addCount(summary: Record<string, number>, key?: string | null) {
   summary[key] = (summary[key] ?? 0) + 1;
 }
 
-async function getAdminScope(userId: string): Promise<AdminScope> {
+export async function getAdminScope(userId: string): Promise<AdminScope> {
   const user = await prisma.user.findFirst({
     where: {
       id: userId,
@@ -157,16 +157,20 @@ export async function listAdminVolunteers(userId: string, query: ListAdminVolunt
     prisma.user.findMany({
       where,
       select: {
-        roles: true,
-        volunteerProfile: {
-          select: {
-            volunteerStatus: true,
-            preferredRegionId: true
-          }
-        }
+        id: true,
+        roles: true
       }
     })
   ]);
+
+  const userIds = summaryVolunteers.map(v => v.id);
+  const summaryProfiles = await prisma.volunteerProfile.findMany({
+    where: { userId: { in: userIds } },
+    select: {
+      volunteerStatus: true,
+      preferredRegionId: true
+    }
+  });
 
   // Get distinct student counts per mentor (from mentorOffers)
   const mentorIds = volunteers.map((v) => v.id);
@@ -190,11 +194,14 @@ export async function listAdminVolunteers(userId: string, query: ListAdminVolunt
   };
 
   for (const volunteer of summaryVolunteers) {
-    addCount(summary.byVolunteerStatus, volunteer.volunteerProfile?.volunteerStatus);
-    addCount(summary.byPreferredRegionId, volunteer.volunteerProfile?.preferredRegionId);
     for (const role of volunteer.roles) {
       addCount(summary.byRole, role);
     }
+  }
+
+  for (const profile of summaryProfiles) {
+    addCount(summary.byVolunteerStatus, profile.volunteerStatus);
+    addCount(summary.byPreferredRegionId, profile.preferredRegionId);
   }
 
   return {
