@@ -31,3 +31,25 @@ export function verifyAccessToken(token: string): AuthUser {
     roles: decoded.roles
   };
 }
+
+export function signRefreshToken(user: AuthUser) {
+  const payload: AccessTokenPayload = {
+    sub: user.id,
+    email: user.email,
+    roles: user.roles
+  };
+
+  return jwt.sign(payload, env.JWT_REFRESH_SECRET, {
+    expiresIn: env.JWT_REFRESH_EXPIRES_IN as SignOptions["expiresIn"]
+  });
+}
+
+export function verifyRefreshToken(token: string): AuthUser {
+  const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET) as AccessTokenPayload;
+
+  return {
+    id: decoded.sub,
+    email: decoded.email,
+    roles: decoded.roles
+  };
+}

@@ -5,6 +5,7 @@ import {
   loginHandler,
   logoutHandler,
   meHandler,
+  refreshTokenHandler,
   registerStudentHandler,
   registerVolunteerHandler,
   resetPasswordHandler,
@@ -18,6 +19,7 @@ authRouter.post("/register/student", registerStudentHandler);
 authRouter.post("/register/volunteer", registerVolunteerHandler);
 authRouter.post("/login", loginHandler);
 authRouter.post("/logout", logoutHandler);
+authRouter.get("/refresh", refreshTokenHandler);
 authRouter.get("/me", requireAuth, meHandler);
 authRouter.post("/forgot-password", forgotPasswordHandler);
 authRouter.post("/reset-password", resetPasswordHandler);

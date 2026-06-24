@@ -1,7 +1,7 @@
 import type { Response } from "express";
 import { env } from "../../config/env";
-import { asyncHandler, sendSuccess } from "../../shared/http";
-import { signAccessToken } from "./token";
+import { asyncHandler, sendSuccess, ApiError } from "../../shared/http";
+import { signAccessToken, signRefreshToken, verifyRefreshToken } from "./token";
 import {
   forgotPasswordSchema,
   loginSchema,
@@ -23,6 +23,7 @@ import {
 } from "./auth.service";
 
 const accessCookieName = "accessToken";
+const refreshCookieName = "refreshToken";
 
 function accessCookieOptions() {
   const useSecureCookie = env.COOKIE_SECURE || env.NODE_ENV === "production";
@@ -36,14 +37,41 @@ function accessCookieOptions() {
   };
 }
 
+function refreshCookieOptions() {
+  const useSecureCookie = env.COOKIE_SECURE || env.NODE_ENV === "production";
+
+  return {
+    httpOnly: true,
+    secure: useSecureCookie,
+    sameSite: useSecureCookie ? "none" as const : "lax" as const,
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+  };
+}
+
 function setAccessCookie(res: Response, token: string) {
   res.cookie(accessCookieName, token, accessCookieOptions());
+}
+
+function setRefreshCookie(res: Response, token: string) {
+  res.cookie(refreshCookieName, token, refreshCookieOptions());
+}
+
+function clearCookieOptions() {
+  const useSecureCookie = env.COOKIE_SECURE || env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: useSecureCookie,
+    sameSite: useSecureCookie ? "none" as const : "lax" as const,
+    path: "/"
+  };
 }
 
 export const registerStudentHandler = asyncHandler(async (req, res) => {
   const input = registerStudentSchema.parse(req.body);
   const authUser = await registerStudent(input);
   setAccessCookie(res, signAccessToken(authUser));
+  setRefreshCookie(res, signRefreshToken(authUser));
   sendSuccess(res, { user: authUser }, 201);
 });
 
@@ -51,6 +79,7 @@ export const registerVolunteerHandler = asyncHandler(async (req, res) => {
   const input = registerVolunteerSchema.parse(req.body);
   const authUser = await registerVolunteer(input);
   setAccessCookie(res, signAccessToken(authUser));
+  setRefreshCookie(res, signRefreshToken(authUser));
   sendSuccess(res, { user: authUser }, 201);
 });
 
@@ -58,17 +87,40 @@ export const loginHandler = asyncHandler(async (req, res) => {
   const input = loginSchema.parse(req.body);
   const authUser = await login(input);
   setAccessCookie(res, signAccessToken(authUser));
+  setRefreshCookie(res, signRefreshToken(authUser));
   sendSuccess(res, { user: authUser });
 });
 
 export const logoutHandler = asyncHandler(async (_req, res) => {
-  res.clearCookie(accessCookieName, accessCookieOptions());
+  res.clearCookie(accessCookieName, clearCookieOptions());
+  res.clearCookie(refreshCookieName, clearCookieOptions());
   sendSuccess(res, { loggedOut: true });
 });
 
 export const meHandler = asyncHandler(async (req, res) => {
   const authUser = await getCurrentUser(req.authUser!.id);
   sendSuccess(res, { user: authUser });
+});
+
+export const refreshTokenHandler = asyncHandler(async (req, res) => {
+  const refreshToken = req.cookies[refreshCookieName];
+  if (!refreshToken) {
+    throw new ApiError(401, "No refresh token provided");
+  }
+
+  try {
+    const authUser = verifyRefreshToken(refreshToken);
+    const freshUser = await getCurrentUser(authUser.id);
+    
+    // Set a new access token
+    setAccessCookie(res, signAccessToken(freshUser));
+    
+    sendSuccess(res, { tokenRefreshed: true });
+  } catch (error) {
+    res.clearCookie(accessCookieName, clearCookieOptions());
+    res.clearCookie(refreshCookieName, clearCookieOptions());
+    throw new ApiError(401, "Invalid or expired refresh token");
+  }
 });
 
 export const forgotPasswordHandler = asyncHandler(async (req, res) => {
