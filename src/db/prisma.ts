@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { env } from "../config/env";
 
-const slowQueryThresholdMs = 250;
+const slowQueryThresholdMs = 500;
 const logSlowQueries = env.NODE_ENV !== "production";
 const retryableReadOperations = new Set([
   "findUnique",
@@ -27,7 +27,7 @@ if (logSlowQueries) {
     }
 
     console.warn(
-      `[db:slow] ${event.duration}ms ${event.query.replace(/\s+/g, " ").trim()}`
+      `[db:slow] ${event.duration}ms`
     );
   });
 }
@@ -37,6 +37,7 @@ function isRetryableDatabaseConnectionError(error: unknown) {
     return false;
   }
 
+  // TODO: make it more predictable and robust in future (it's fragile as of now)
   return (
     error.name === "PrismaClientInitializationError" ||
     error.message.includes("Can't reach database server") ||

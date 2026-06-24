@@ -1,3 +1,4 @@
+import compression from "compression";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
@@ -21,6 +22,8 @@ import {
 } from "./modules/dashboard/dashboard.routes";
 import { documentRouter } from "./modules/documents/document.routes";
 import { healthRouter } from "./modules/health/health.routes";
+import { notificationRouter } from "./modules/notifications/notification.routes";
+import { chatRouter } from "./modules/chat/chat.routes";
 import { adminOfferRouter } from "./modules/offers/admin-offer.routes";
 import { studentOfferRouter } from "./modules/offers/student-offer.routes";
 import { mentorOfferRouter } from "./modules/offers/mentor-offer.routes";
@@ -43,6 +46,7 @@ app.use(
   })
 );
 app.use(express.json({ limit: "1mb" }));
+app.use(compression());
 app.use(cookieParser());
 app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
 
@@ -51,6 +55,8 @@ app.use("/api/auth", authRateLimiter, authRouter);
 app.use("/api/documents", uploadRateLimiter, documentRouter);
 app.use("/api", apiRateLimiter);
 app.use("/api/config", configRouter);
+app.use("/api/notifications", notificationRouter);
+app.use("/api/chat", chatRouter);
 app.use("/api/announcements", announcementRouter);
 app.use("/api/student/dashboard", studentDashboardRouter);
 app.use("/api/student/profile", studentProfileRouter);
