@@ -14,6 +14,7 @@ import {
   regionalAdminVisibleProfileDocumentTypes,
   signatureMaxUploadSizeBytes
 } from "./document.constants";
+import { uploadToStorage, getSignedStorageUrl } from "../../shared/storage";
 
 
 export async function saveDocument(input: {
@@ -29,8 +30,6 @@ export async function saveDocument(input: {
   if (!studentProfile || studentProfile.deletedAt) {
     throw new ApiError(404, "Student profile not found");
   }
-
-  const storageKey = path.join(privateUploadRoot, input.file.filename).replace(/\\/g, "/");
 
   // Enforce 1MB limit for signature documents
   if (imageOnlyDocumentTypes.has(input.documentType) && input.file.size > signatureMaxUploadSizeBytes) {
@@ -75,6 +74,14 @@ export async function saveDocument(input: {
       }
     });
 
+    // Upload to R2 (or fallback to local)
+    const { key, bucket } = await uploadToStorage(
+      input.file.buffer,
+      input.file.originalname,
+      input.file.mimetype,
+      "documents"
+    );
+
     const document = await tx.document.create({
       data: {
         ownerUserId: input.userId,
@@ -84,8 +91,8 @@ export async function saveDocument(input: {
         originalFilename: input.file.originalname,
         mimeType: input.file.mimetype,
         fileSizeBytes: input.file.size,
-        storageBucket: localPrivateBucket,
-        storageKey,
+        storageBucket: bucket,
+        storageKey: key,
         status: DocumentStatus.active,
         uploadedBy: input.userId,
         deletedAt: null
@@ -108,6 +115,7 @@ export async function getDownloadableDocument(input: {
   requesterUserId: string;
   ipAddress?: string;
   userAgent?: string;
+  download?: boolean;
 }) {
   const document = await prisma.document.findFirst({
     where: {
@@ -183,44 +191,20 @@ export async function getDownloadableDocument(input: {
     throw new ApiError(403, "You do not have permission to access this document");
   }
 
-  const absolutePath = path.join(process.cwd(), document.storageKey);
-  if (!fs.existsSync(absolutePath)) {
-    if (process.env.NODE_ENV !== "production") {
-      const parentDir = path.dirname(absolutePath);
-      if (fs.existsSync(parentDir)) {
-        const files = fs.readdirSync(parentDir);
-        const ext = path.extname(absolutePath).toLowerCase();
-        const isImg = [".jpg", ".jpeg", ".png", ".svg", ".webp"].includes(ext);
-        
-        let fallbackFile = files.find(f => {
-          const fExt = path.extname(f).toLowerCase();
-          if (isImg) {
-            return [".jpg", ".jpeg", ".png", ".svg", ".webp"].includes(fExt);
-          } else {
-            return fExt === ext;
-          }
-        });
-
-        if (!fallbackFile && files.length > 0) {
-          fallbackFile = files[0];
-        }
-
-        if (fallbackFile) {
-          const fallbackPath = path.join(parentDir, fallbackFile);
-          try {
-            fs.copyFileSync(fallbackPath, absolutePath);
-            console.log(`[Dev Fallback] Copied mock file ${fallbackPath} to ${absolutePath} to prevent 404.`);
-          } catch (e) {
-            console.error("[Dev Fallback] Failed to copy fallback mock file:", e);
-          }
-        }
-      }
+  if (document.storageBucket === "local_private") {
+    // Legacy local files handling
+    const absolutePath = path.join(process.cwd(), document.storageKey);
+    if (!fs.existsSync(absolutePath)) {
+      throw new ApiError(404, "Document file not found");
     }
   }
 
-  if (!fs.existsSync(absolutePath)) {
-    throw new ApiError(404, "Document file not found");
-  }
+  const signedUrl = await getSignedStorageUrl(
+    document.storageKey,
+    document.storageBucket,
+    3600,
+    input.download ? document.originalFilename : undefined
+  );
 
   await recordAuditLog({
     actorUserId: input.requesterUserId,
@@ -239,6 +223,7 @@ export async function getDownloadableDocument(input: {
 
   return {
     document,
-    absolutePath
+    absolutePath: document.storageBucket === "local_private" ? path.join(process.cwd(), document.storageKey) : undefined,
+    url: signedUrl
   };
 }

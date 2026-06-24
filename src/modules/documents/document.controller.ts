@@ -33,29 +33,39 @@ export const uploadDocumentHandler = asyncHandler(async (req, res) => {
       201
     );
   } catch (error) {
-    await fs.unlink(req.file.path).catch(() => undefined);
     throw error;
   }
 });
 
 export const downloadDocumentHandler = asyncHandler(async (req, res) => {
-  const { document, absolutePath } = await getDownloadableDocument({
+  const { document, absolutePath, url } = await getDownloadableDocument({
     documentId: req.params.id,
     requesterUserId: req.authUser!.id,
     ipAddress: req.ip,
-    userAgent: req.get("user-agent")
+    userAgent: req.get("user-agent"),
+    download: true
   });
 
-  res.download(absolutePath, document.originalFilename);
+  if (url) {
+    res.redirect(url);
+    return;
+  }
+
+  res.download(absolutePath!, document.originalFilename);
 });
 
 export const previewDocumentHandler = asyncHandler(async (req, res) => {
-  const { document, absolutePath } = await getDownloadableDocument({
+  const { document, absolutePath, url } = await getDownloadableDocument({
     documentId: req.params.id,
     requesterUserId: req.authUser!.id,
     ipAddress: req.ip,
     userAgent: req.get("user-agent")
   });
+
+  if (url) {
+    res.redirect(url);
+    return;
+  }
 
   // Set headers for inline browser rendering
   res.setHeader("Content-Type", document.mimeType);
@@ -65,6 +75,6 @@ export const previewDocumentHandler = asyncHandler(async (req, res) => {
   );
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
-  const stream = await fs.readFile(absolutePath);
+  const stream = await fs.readFile(absolutePath!);
   res.end(stream);
 });

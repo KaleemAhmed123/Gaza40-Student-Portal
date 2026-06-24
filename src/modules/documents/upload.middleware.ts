@@ -18,14 +18,7 @@ const uploadDirectory = path.join(process.cwd(), privateUploadRoot);
 mkdirSync(uploadDirectory, { recursive: true });
 
 export const uploadSingleDocument = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, callback) => {
-      callback(null, uploadDirectory);
-    },
-    filename: (_req, file, callback) => {
-      callback(null, `${randomUUID()}${path.extname(file.originalname).toLowerCase()}`);
-    }
-  }),
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: maxUploadSizeBytes
   },
