@@ -279,9 +279,10 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
   };
 }
 
-export async function exportAdminStudentsCsv(input: {
+export async function streamAdminStudentsCsv(input: {
   userId: string;
   query: ListAdminStudentsQuery;
+  res: import("express").Response;
   ipAddress?: string;
   userAgent?: string;
 }) {
@@ -291,131 +292,169 @@ export async function exportAdminStudentsCsv(input: {
       ? buildRegionalWhere(input.query, scope.regionId)
       : buildMasterWhere(input.query);
 
-  const students = await prisma.user.findMany({
-    where,
-    select: {
-      id: true,
-      fullName: true,
-      email: true,
-      phone: true,
-      dateOfBirth: true,
-      createdAt: true,
-      accountStatus: true,
-      studentProfile: {
-        select: {
-          fullNameEnglish: true,
-          sex: true,
-          dateOfBirth: true,
-          locationInGaza: true,
-          passportStatus: true,
-          passportLocation: true,
-          consentSigned: true,
-          profileStatus: true,
-          hasOfferSelfReported: true,
-          hasVerifiedOffer: true,
-          emergencyContactFirstName: true,
-          emergencyContactRelation: true,
-          emergencyContactPhone: true
-        }
-      },
-      studentOffers: {
-        where: {
-          deletedAt: null,
-          ...(scope.role === "regional_admin" ? { regionId: scope.regionId } : {})
-        },
-        select: {
-          id: true,
-          universityName: true,
-          courseName: true,
-          courseField: true,
-          courseLevel: true,
-          reviewStatus: true,
-          tuitionFeePerYear: true,
-          scholarshipAmountPerYear: true,
-          privateFundingAmount: true,
-          createdAt: true,
-          updatedAt: true,
-          region: { select: { name: true } },
-          documents: {
-            where: { status: "active", deletedAt: null },
-            select: {
-              id: true,
-              documentType: true,
-              originalFilename: true
-            }
+  let hasMore = true;
+  let cursor: string | undefined = undefined;
+  const batchSize = 1000;
+  let headersWritten = false;
+  let totalRows = 0;
+
+  while (hasMore) {
+    const students: any[] = await prisma.user.findMany({
+      where,
+      take: batchSize,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        dateOfBirth: true,
+        createdAt: true,
+        accountStatus: true,
+        studentProfile: {
+          select: {
+            fullNameEnglish: true,
+            sex: true,
+            dateOfBirth: true,
+            locationInGaza: true,
+            passportStatus: true,
+            passportLocation: true,
+            consentSigned: true,
+            profileStatus: true,
+            hasOfferSelfReported: true,
+            hasVerifiedOffer: true,
+            emergencyContactFirstName: true,
+            emergencyContactRelation: true,
+            emergencyContactPhone: true
           }
         },
-        orderBy: { updatedAt: "desc" }
-      }
-    },
-    orderBy: { createdAt: "desc" }
-  });
+        studentOffers: {
+          where: {
+            deletedAt: null,
+            ...(scope.role === "regional_admin" ? { regionId: scope.regionId } : {})
+          },
+          select: {
+            id: true,
+            universityName: true,
+            courseName: true,
+            courseField: true,
+            courseLevel: true,
+            reviewStatus: true,
+            tuitionFeePerYear: true,
+            scholarshipAmountPerYear: true,
+            privateFundingAmount: true,
+            createdAt: true,
+            updatedAt: true,
+            region: { select: { name: true } },
+            documents: {
+              where: { status: "active", deletedAt: null },
+              select: {
+                id: true,
+                documentType: true,
+                originalFilename: true
+              }
+            }
+          },
+          orderBy: { updatedAt: "desc" }
+        }
+      },
+      orderBy: { id: "asc" }
+    });
 
-  // One row per offer (student details repeated across rows)
-  const rows: Record<string, unknown>[] = [];
-  for (const student of students) {
-    const studentBase = {
-      studentId: student.id,
-      studentName: student.fullName,
-      email: student.email,
-      phone: student.phone,
-      dateOfBirth: student.studentProfile?.dateOfBirth ?? student.dateOfBirth,
-      locationInGaza: student.studentProfile?.locationInGaza,
-      passportStatus: student.studentProfile?.passportStatus,
-      profileStatus: student.studentProfile?.profileStatus,
-      consentSigned: student.studentProfile?.consentSigned,
-      hasVerifiedOffer: student.studentProfile?.hasVerifiedOffer,
-      emergencyContactName: student.studentProfile?.emergencyContactFirstName,
-      emergencyContactRelation: student.studentProfile?.emergencyContactRelation,
-      emergencyContactPhone: student.studentProfile?.emergencyContactPhone,
-      accountStatus: student.accountStatus,
-      registeredAt: student.createdAt
-    };
+    if (students.length === 0) {
+      hasMore = false;
+      break;
+    }
 
-    if (student.studentOffers.length === 0) {
-      rows.push({ ...studentBase, offerId: "", universityName: "No offers", region: "", courseName: "", courseField: "", courseLevel: "", offerStatus: "", tuitionFeePerYear: "", scholarshipAmountPerYear: "", privateFundingAmount: "", offerLetterUrl: "", scholarshipLetterUrl: "", offerCreatedAt: "", offerUpdatedAt: "" });
-    } else {
-      for (const offer of student.studentOffers) {
-        const offerLetterDoc = offer.documents.find((d) => d.documentType === "offer_letter");
-        const scholarshipLetterDoc = offer.documents.find((d) => d.documentType === "scholarship_letter");
+    cursor = students[students.length - 1].id;
 
-        rows.push({
-          ...studentBase,
-          offerId: offer.id,
-          universityName: offer.universityName,
-          region: offer.region.name,
-          courseName: offer.courseName,
-          courseField: offer.courseField,
-          courseLevel: offer.courseLevel,
-          offerStatus: offer.reviewStatus,
-          tuitionFeePerYear: offer.tuitionFeePerYear,
-          scholarshipAmountPerYear: offer.scholarshipAmountPerYear ?? "",
-          privateFundingAmount: offer.privateFundingAmount,
-          offerLetterUrl: offerLetterDoc
-            ? `${process.env.API_BASE_URL ?? ""}/api/documents/${offerLetterDoc.id}/download`
-            : "",
-          offerLetterFileName: offerLetterDoc?.originalFilename ?? "",
-          scholarshipLetterUrl: scholarshipLetterDoc
-            ? `${process.env.API_BASE_URL ?? ""}/api/documents/${scholarshipLetterDoc.id}/download`
-            : "",
-          scholarshipLetterFileName: scholarshipLetterDoc?.originalFilename ?? "",
-          offerCreatedAt: offer.createdAt,
-          offerUpdatedAt: offer.updatedAt
-        });
+    // One row per offer (student details repeated across rows)
+    const rows: Record<string, unknown>[] = [];
+    for (const student of students) {
+      const studentBase = {
+        studentId: student.id,
+        studentName: student.fullName,
+        email: student.email,
+        phone: student.phone,
+        dateOfBirth: student.studentProfile?.dateOfBirth ?? student.dateOfBirth,
+        locationInGaza: student.studentProfile?.locationInGaza,
+        passportStatus: student.studentProfile?.passportStatus,
+        profileStatus: student.studentProfile?.profileStatus,
+        consentSigned: student.studentProfile?.consentSigned,
+        hasVerifiedOffer: student.studentProfile?.hasVerifiedOffer,
+        emergencyContactName: student.studentProfile?.emergencyContactFirstName,
+        emergencyContactRelation: student.studentProfile?.emergencyContactRelation,
+        emergencyContactPhone: student.studentProfile?.emergencyContactPhone,
+        accountStatus: student.accountStatus,
+        registeredAt: student.createdAt
+      };
+
+      if (student.studentOffers.length === 0) {
+        rows.push({ ...studentBase, offerId: "", universityName: "No offers", region: "", courseName: "", courseField: "", courseLevel: "", offerStatus: "", tuitionFeePerYear: "", scholarshipAmountPerYear: "", privateFundingAmount: "", offerLetterUrl: "", scholarshipLetterUrl: "", offerCreatedAt: "", offerUpdatedAt: "" });
+      } else {
+        for (const offer of student.studentOffers) {
+          const offerLetterDoc = offer.documents.find((d: any) => d.documentType === "offer_letter");
+          const scholarshipLetterDoc = offer.documents.find((d: any) => d.documentType === "scholarship_letter");
+
+          rows.push({
+            ...studentBase,
+            offerId: offer.id,
+            universityName: offer.universityName,
+            region: offer.region.name,
+            courseName: offer.courseName,
+            courseField: offer.courseField,
+            courseLevel: offer.courseLevel,
+            offerStatus: offer.reviewStatus,
+            tuitionFeePerYear: offer.tuitionFeePerYear,
+            scholarshipAmountPerYear: offer.scholarshipAmountPerYear ?? "",
+            privateFundingAmount: offer.privateFundingAmount,
+            offerLetterUrl: offerLetterDoc
+              ? `${process.env.API_BASE_URL ?? ""}/api/documents/${offerLetterDoc.id}/download`
+              : "",
+            offerLetterFileName: offerLetterDoc?.originalFilename ?? "",
+            scholarshipLetterUrl: scholarshipLetterDoc
+              ? `${process.env.API_BASE_URL ?? ""}/api/documents/${scholarshipLetterDoc.id}/download`
+              : "",
+            scholarshipLetterFileName: scholarshipLetterDoc?.originalFilename ?? "",
+            offerCreatedAt: offer.createdAt,
+            offerUpdatedAt: offer.updatedAt
+          });
+        }
       }
     }
+
+    if (rows.length > 0) {
+      totalRows += rows.length;
+      const headers = Object.keys(rows[0]);
+      
+      if (!headersWritten) {
+        input.res.write(headers.map(h => `"${h}"`).join(",") + "\n");
+        headersWritten = true;
+      }
+      
+      const chunk = rows.map(row => 
+        headers.map(h => {
+          const v = row[h];
+          if (v === null || v === undefined) return '""';
+          if (v instanceof Date) return `"${v.toISOString()}"`;
+          return `"${String(v).replace(/"/g, '""')}"`;
+        }).join(",")
+      ).join("\n") + "\n";
+      
+      input.res.write(chunk);
+    }
   }
+
+  input.res.end();
 
   await recordAuditLog({
     actorUserId: input.userId,
     action: "students_exported",
     entityType: "student",
-    metadata: { scope, filters: input.query, rowCount: rows.length },
+    metadata: { scope, filters: input.query, rowCount: totalRows },
     ipAddress: input.ipAddress,
     userAgent: input.userAgent
   });
-
-  return toCsv(rows);
 }
 
 export async function getAdminStudentDetails(userId: string, studentId: string) {
