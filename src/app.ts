@@ -1,11 +1,26 @@
 import compression from "compression";
-import cookieParser from "cookie-parser";
-import cors from "cors";
 import express from "express";
+import * as Sentry from "@sentry/node";
+import { nodeProfilingIntegration } from "@sentry/profiling-node";
+import cors from "cors";
 import helmet from "helmet";
+import cookieParser from "cookie-parser";
 import morgan from "morgan";
 import { env } from "./config/env";
+
+if (env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: env.SENTRY_DSN,
+    integrations: [
+      nodeProfilingIntegration(),
+    ],
+    tracesSampleRate: 1.0,
+    profilesSampleRate: 1.0,
+  });
+}
+
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware";
+import { requireCsrfHeader } from "./middleware/csrf.middleware";
 import { apiRateLimiter, authRateLimiter, uploadRateLimiter } from "./middleware/rate-limit.middleware";
 import { adminAuditLogRouter } from "./modules/admin/audit-logs/admin-audit-log.routes";
 import { adminRegionalAdminRouter } from "./modules/admin/regional-admins/admin-regional-admin.routes";
@@ -50,6 +65,9 @@ app.use(compression());
 app.use(cookieParser());
 app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
 
+// Enforce CSRF protection
+app.use(requireCsrfHeader);
+
 app.use("/health", healthRouter);
 app.use("/api/auth", authRateLimiter, authRouter);
 app.use("/api/documents", uploadRateLimiter, documentRouter);
@@ -72,11 +90,12 @@ app.use("/api/admin/config", adminConfigRouter);
 app.use("/api/admin/queries", adminQueryRouter);
 app.use("/api/admin/announcements", adminAnnouncementRouter);
 app.use("/api/admin/audit-logs", adminAuditLogRouter);
+
 app.use("/api/mentor/dashboard", mentorDashboardRouter);
 app.use("/api/mentor/offers", mentorOfferRouter);
 app.use("/api/mentor/students", mentorStudentRouter);
 app.use("/api/mentor/queries", mentorQueryRouter);
 app.use("/api/universities", universityRouter);
 
-app.use(notFoundHandler);
+app.use("*", notFoundHandler);
 app.use(errorHandler);
