@@ -41,11 +41,24 @@ export const addGroupMemberHandler = asyncHandler(async (req, res) => {
   sendSuccess(res, { membership });
 });
 
+export const removeGroupMemberHandler = asyncHandler(async (req, res) => {
+  const { id: conversationId, userId: targetId } = req.params;
+  
+  await chatService.removeGroupMember(req.authUser!.id, conversationId, targetId);
+  
+  const { emitToConversation, emitToUser } = require("./chat.socket");
+  emitToConversation(conversationId, "conversation_updated", {});
+  emitToUser(targetId, "conversation_deleted", { conversationId });
+
+  sendSuccess(res, { success: true });
+});
+
 export const getMessagesHandler = asyncHandler(async (req, res) => {
   const { id: conversationId } = req.params;
   const cursor = req.query.cursor as string | undefined;
+  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
   
-  const messages = await chatService.getMessages(conversationId, req.authUser!.id, 50, cursor);
+  const messages = await chatService.getMessages(conversationId, req.authUser!.id, limit, cursor);
   sendSuccess(res, { messages });
 });
 

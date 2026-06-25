@@ -10,7 +10,8 @@ import {
   getAttachmentUrlHandler,
   searchUsersHandler,
   deleteConversationHandler,
-  deleteMessageHandler
+  deleteMessageHandler,
+  removeGroupMemberHandler
 } from "./chat.controller";
 import { uploadChatAttachment } from "./chat.upload";
 
@@ -22,6 +23,7 @@ chatRouter.get("/conversations", getConversationsHandler);
 chatRouter.post("/conversations/direct", getDirectChatHandler);
 chatRouter.post("/conversations/group", createGroupChatHandler);
 chatRouter.post("/conversations/:id/members", addGroupMemberHandler);
+chatRouter.delete("/conversations/:id/members/:userId", removeGroupMemberHandler);
 chatRouter.get("/conversations/:id/messages", getMessagesHandler);
 chatRouter.post("/conversations/:id/attachments", uploadChatAttachment.single("file"), uploadAttachmentHandler);
 chatRouter.get("/attachments/:conversationId/:fileId", getAttachmentUrlHandler);
