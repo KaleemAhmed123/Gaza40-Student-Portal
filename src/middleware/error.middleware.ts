@@ -3,6 +3,7 @@ import multer from "multer";
 import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 import { ApiError } from "../shared/http";
+import * as Sentry from "@sentry/node";
 
 export function notFoundHandler(req: Request, _res: Response, next: NextFunction) {
   next(new ApiError(404, `Route not found: ${req.method} ${req.path}`));
@@ -63,6 +64,7 @@ export function errorHandler(
     return;
   }
 
+  Sentry.captureException(error);
   console.error(error);
   res.status(500).json({ error: { message: "Internal server error" } });
 }
