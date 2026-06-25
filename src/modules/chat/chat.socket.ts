@@ -43,7 +43,7 @@ export function initSocket(server: HttpServer) {
 
   io.on("connection", (socket: Socket) => {
     const user = (socket as any).user;
-    // console.log(`[Socket] User connected: ${user.id}`);
+
 
     // Join personal room for direct notifications
     socket.join(`user_${user.id}`);
@@ -59,7 +59,7 @@ export function initSocket(server: HttpServer) {
           socket.join(`conv_${m.conversationId}`);
         });
 
-        // console.log(`[Socket] User ${user.id} joined ${memberships.length} conversation rooms`);
+
       } catch (err) {
         console.error("[Socket] join_conversations error:", err);
       }
@@ -67,6 +67,11 @@ export function initSocket(server: HttpServer) {
 
     socket.on("send_message", async (data: { conversationId: string; content?: string; clientMessageId?: string; attachmentUrl?: string; attachmentName?: string; attachmentSize?: number; attachmentType?: string }) => {
       try {
+        if (typeof data.conversationId !== "string") {
+          socket.emit("error", { message: "Invalid conversation ID" });
+          return;
+        }
+
         // Validate access
         let hasAccess = false;
         if (user.roles.includes("master_admin")) {
@@ -115,22 +120,27 @@ export function initSocket(server: HttpServer) {
           where: { conversationId: data.conversationId }
         });
         
+        const notificationsToCreate: any[] = [];
+
         members.forEach(m => {
           if (m.userId !== user.id) {
              io.to(`user_${m.userId}`).emit("notification_new_message", message);
              
-             // Create persistent notification
-             import("../notifications/notification.service").then(({ createNotification }) => {
-               createNotification({
-                 userId: m.userId,
-                 type: "chat_message",
-                 title: "New Message",
-                 body: `New message from ${message.sender?.fullName || "someone"}`,
-                 link: `/chat/${data.conversationId}`
-               }).catch(e => console.error("Failed to create chat notification", e));
+             notificationsToCreate.push({
+               userId: m.userId,
+               type: "chat_message",
+               title: "New Message",
+               body: `New message from ${message.sender?.fullName || "someone"}`,
+               link: `/chat/${data.conversationId}`
              });
           }
         });
+
+        if (notificationsToCreate.length > 0) {
+          prisma.notification.createMany({
+            data: notificationsToCreate
+          }).catch(e => console.error("Failed to create bulk chat notifications", e));
+        }
 
       } catch (err) {
         console.error("[Socket] send_message error:", err);
@@ -138,20 +148,20 @@ export function initSocket(server: HttpServer) {
       }
     });
 
-    socket.on("typing_start", (data: { conversationId: string }) => {
+    socket.on("typing_start", (data: { conversationId: string, fullName?: string }) => {
       socket.to(`conv_${data.conversationId}`).emit("user_typing", {
         conversationId: data.conversationId,
         userId: user.id,
-        fullName: user.fullName,
+        fullName: data.fullName || user.fullName || "Someone",
         isTyping: true
       });
     });
 
-    socket.on("typing_stop", (data: { conversationId: string }) => {
+    socket.on("typing_stop", (data: { conversationId: string, fullName?: string }) => {
       socket.to(`conv_${data.conversationId}`).emit("user_typing", {
         conversationId: data.conversationId,
         userId: user.id,
-        fullName: user.fullName,
+        fullName: data.fullName || user.fullName || "Someone",
         isTyping: false
       });
     });
@@ -176,7 +186,7 @@ export function initSocket(server: HttpServer) {
     });
 
     socket.on("disconnect", () => {
-      // console.log(`[Socket] User disconnected: ${user.id}`);
+
     });
   });
 }

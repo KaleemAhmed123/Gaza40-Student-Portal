@@ -239,6 +239,27 @@ export async function addGroupMember(adderId: string, conversationId: string, ta
   }
 }
 
+export async function removeGroupMember(removerId: string, conversationId: string, targetId: string) {
+  // Validate conversation is a group
+  const conversation = await prisma.conversation.findUnique({ where: { id: conversationId } });
+  if (!conversation || conversation.type !== "group") {
+    throw new ApiError(400, "Invalid group conversation");
+  }
+
+  // Allow master_admin or group creator to remove
+  const remover = await prisma.user.findUnique({ where: { id: removerId }, select: { roles: true } });
+  const isMasterAdmin = remover?.roles.includes("master_admin");
+  const isCreator = conversation.createdBy === removerId;
+
+  if (!isMasterAdmin && !isCreator) {
+    throw new ApiError(403, "You do not have permission to remove members from this group");
+  }
+
+  await prisma.conversationMember.delete({
+    where: { conversationId_userId: { conversationId, userId: targetId } }
+  });
+}
+
 export async function getMessages(conversationId: string, userId: string, limit = 50, cursor?: string) {
   // Validate membership or master_admin
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { roles: true } });
@@ -286,10 +307,10 @@ export const searchChatUsers = async (query: string, role?: string, regionId?: s
   
   if (query) {
     where.OR = [
-      { fullName: { contains: query, mode: "insensitive" } },
-      { email: { contains: query, mode: "insensitive" } },
-      { volunteerProfile: { is: { universityAffiliation: { contains: query, mode: "insensitive" } } } },
-      { studentProfile: { is: { locationOther: { contains: query, mode: "insensitive" } } } }
+      { fullName: { startsWith: query, mode: "insensitive" } },
+      { email: { startsWith: query, mode: "insensitive" } },
+      { volunteerProfile: { is: { universityAffiliation: { startsWith: query, mode: "insensitive" } } } },
+      { studentProfile: { is: { locationOther: { startsWith: query, mode: "insensitive" } } } }
     ];
   }
   
