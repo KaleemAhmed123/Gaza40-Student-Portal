@@ -158,7 +158,17 @@ export async function getDownloadableDocument(input: {
         } else {
           // Regional admins cannot access passport or national_id documents
           if (regionalAdminVisibleProfileDocumentTypes.has(document.documentType)) {
-            hasAccess = true;
+            const hasOfferInRegion = await prisma.offer.findFirst({
+              where: { studentUserId: document.ownerUserId, regionId, deletedAt: null }
+            });
+            if (hasOfferInRegion) {
+              hasAccess = true;
+            } else {
+              const hasQueryInRegion = await prisma.query.findFirst({
+                where: { studentUserId: document.ownerUserId, regionId, deletedAt: null }
+              });
+              if (hasQueryInRegion) hasAccess = true;
+            }
           } else if (!profileDocumentTypes.has(document.documentType)) {
             // For non-profile documents not tied to an offer, check if student has any offer in this region
             const hasOfferInRegion = await prisma.offer.findFirst({
@@ -193,7 +203,11 @@ export async function getDownloadableDocument(input: {
 
   if (document.storageBucket === "local_private") {
     // Legacy local files handling
-    const absolutePath = path.join(process.cwd(), document.storageKey);
+    const absolutePath = path.resolve(process.cwd(), document.storageKey);
+    const expectedRoot = path.resolve(process.cwd(), privateUploadRoot);
+    if (!absolutePath.startsWith(expectedRoot)) {
+      throw new ApiError(400, "Invalid storage key");
+    }
     if (!fs.existsSync(absolutePath)) {
       throw new ApiError(404, "Document file not found");
     }
