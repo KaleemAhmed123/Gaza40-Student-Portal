@@ -17,7 +17,6 @@ export async function createNotification(input: {
     },
   });
 
-  // TODO: Add socket.io emission here when socket layer is built
 
   return notification;
 }
