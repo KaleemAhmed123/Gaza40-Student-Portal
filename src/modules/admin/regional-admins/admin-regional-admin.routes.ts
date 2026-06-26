@@ -5,7 +5,8 @@ import {
   createRegionalAdminHandler,
   listRegionalAdminsHandler,
   updateRegionalAdminHandler,
-  deleteRegionalAdminHandler
+  deleteRegionalAdminHandler,
+  resendRegionalAdminInviteHandler
 } from "./admin-regional-admin.controller";
 
 export const adminRegionalAdminRouter = Router();
@@ -15,5 +16,6 @@ adminRegionalAdminRouter.use(requireAuth, requireRole([RoleCode.master_admin]));
 
 adminRegionalAdminRouter.get("/", listRegionalAdminsHandler);
 adminRegionalAdminRouter.post("/", createRegionalAdminHandler);
+adminRegionalAdminRouter.post("/:id/resend-invite", resendRegionalAdminInviteHandler);
 adminRegionalAdminRouter.patch("/:id", updateRegionalAdminHandler);
 adminRegionalAdminRouter.delete("/:id", deleteRegionalAdminHandler);

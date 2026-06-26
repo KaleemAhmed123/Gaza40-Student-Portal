@@ -3,7 +3,8 @@ import {
   createRegionalAdmin,
   listRegionalAdmins,
   updateRegionalAdmin,
-  deleteRegionalAdmin
+  deleteRegionalAdmin,
+  resendRegionalAdminInvite
 } from "./admin-regional-admin.service";
 import { createRegionalAdminSchema, updateRegionalAdminSchema } from "./admin-regional-admin.validation";
 
@@ -28,4 +29,9 @@ export const updateRegionalAdminHandler = asyncHandler(async (req, res) => {
 export const deleteRegionalAdminHandler = asyncHandler(async (req, res) => {
   await deleteRegionalAdmin(req.params.id);
   sendSuccess(res, { deleted: true });
+});
+
+export const resendRegionalAdminInviteHandler = asyncHandler(async (req, res) => {
+  const result = await resendRegionalAdminInvite(req.params.id);
+  sendSuccess(res, result);
 });

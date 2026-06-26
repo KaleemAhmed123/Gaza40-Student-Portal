@@ -74,6 +74,37 @@ export async function createRegionalAdmin(input: CreateRegionalAdminInput, creat
   });
 }
 
+export async function resendRegionalAdminInvite(id: string) {
+  const user = await prisma.user.findFirst({
+    where: { id, roles: { has: RoleCode.regional_admin }, deletedAt: null },
+    include: {
+      regionalAdminProfile: {
+        include: { region: true }
+      }
+    }
+  });
+
+  if (!user || !user.regionalAdminProfile) {
+    throw new ApiError(404, "Regional Admin not found");
+  }
+
+  const { regionalAdminProfile } = user;
+
+  sendEmailBestEffort({
+    to: [user.email],
+    subject: "Welcome to Gaza40 - Regional Admin Account Credentials",
+    text: `Hello ${user.fullName},\n\nYour Regional Admin account details.\nEmail: ${user.email}\nPassword: ${regionalAdminProfile.plainPassword || 'Contact Master Admin'}\nRegion: ${regionalAdminProfile.region.name}\n\nPlease log in and change your password.`,
+    html: emailTemplates.regionalAdminInvite(
+      user.fullName,
+      user.email,
+      regionalAdminProfile.plainPassword || undefined,
+      regionalAdminProfile.region.name
+    )
+  });
+
+  return { message: "Invitation email sent successfully" };
+}
+
 export async function listRegionalAdmins() {
   const users = await prisma.user.findMany({
     where: {
