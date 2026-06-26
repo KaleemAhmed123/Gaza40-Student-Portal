@@ -205,6 +205,7 @@ model RegionalAdminProfile {
   regionId         String              @db.ObjectId
   status           RegionalAdminStatus @default(active)
   assignedByUserId String?             @db.ObjectId
+  plainPassword    String?
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
   deletedAt        DateTime?
