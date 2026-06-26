@@ -333,6 +333,18 @@ export async function createMyOffer(userId: string, input: OfferInput) {
     include: offerInclude
   });
 
+  await recordAuditLog({
+    actorUserId: userId,
+    action: "offer_created",
+    entityType: "offer",
+    entityId: offer.id,
+    metadata: {
+      universityName: offer.universityName,
+      courseName: offer.courseName,
+      regionId: offer.regionId
+    }
+  });
+
   return formatOffer(offer, financialRules);
 }
 
@@ -992,10 +1004,14 @@ export async function reviewOffer(input: {
     throw new ApiError(403, "You do not have permission to review this offer");
   }
 
+  if (offer.reviewStatus !== OfferReviewStatus.under_review) {
+    throw new ApiError(409, "Only offers under review can be reviewed");
+  }
+
   const nextStatus = input.data.status as OfferReviewStatus;
   const reviewedOffer = await prisma.$transaction(async (tx) => {
     const updatedOffer = await tx.offer.update({
-      where: { id: offer.id },
+      where: { id: offer.id, reviewStatus: OfferReviewStatus.under_review },
       data: {
         reviewStatus: nextStatus,
         lockedForReview: nextStatus === OfferReviewStatus.approved || nextStatus === OfferReviewStatus.rejected,

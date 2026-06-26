@@ -97,7 +97,7 @@ export async function reviewStudentProfile(input: {
   }
 
   const reviewedProfile = await prisma.studentProfile.update({
-    where: { id: input.profileId },
+    where: { id: input.profileId, profileStatus: ProfileStatus.under_review },
     data: {
       profileStatus: input.status,
       reviewedBy: input.reviewerUserId,
