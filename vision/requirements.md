@@ -301,3 +301,48 @@ Alerts Table:
 id, student_id (FK) 
 
 alert_type, message, status (open/resolved), created_at 
+
+
+8. Real-Time Chat Feature
+
+A real-time chat system is integrated to facilitate communication between Admins, Regional Admins, and Mentors with role-based access control.
+
+8.1 Direct Chat
+
+Admin:
+- Can initiate one-to-one chats with any Regional Admin or Mentor.
+- Can search and communicate with all users across all regions.
+- User search supports filters such as University and Country.
+
+Regional Admin:
+- Can search and directly chat with Mentors belonging to their own region, other Regional Admins (including those from different regions), and Admins.
+- System supports multiple Regional Admins within the same region to ensure future scalability.
+
+Mentor:
+- Can search and directly chat with their Regional Admin(s). If multiple Regional Admins exist within the same region, mentors can select the desired Regional Admin.
+- Can search and directly chat with Admins.
+- Mentors cannot chat directly with other Mentors.
+
+8.2 Group Chat
+
+Regional Admin:
+- Can create groups.
+- Can add Mentors belonging to their own region only, and other Regional Admins (including those from different regions).
+- Cannot add mentors from other regions.
+
+Admin:
+- Can create groups without regional restrictions.
+- Can add any Regional Admin or Mentor to a group.
+- Can search any user or group and is, by default, a member of all groups on the platform.
+
+8.3 Group Permissions
+
+Group management follows WhatsApp-style permissions:
+- The creator of a group becomes the Group Admin.
+- Group Admins can: add participants, remove participants, delete messages, and manage group settings and permissions.
+
+8.4 Chat Restrictions Summary
+- Mentors cannot initiate or participate in one-to-one chats with other Mentors.
+- Mentors cannot create groups.
+- Regional Admins can only create groups containing mentors from their own region.
+- Admin has unrestricted access to direct chats and group creation.
