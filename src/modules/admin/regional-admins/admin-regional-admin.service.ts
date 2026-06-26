@@ -4,6 +4,7 @@ import { ApiError } from "../../../shared/http";
 import { RoleCode, AccountStatus, RegionalAdminStatus, AuthTokenType } from "@prisma/client";
 import { sendEmailBestEffort } from "../../../shared/email";
 import { emailTemplates } from "../../../shared/email-templates";
+import { io } from "../../chat/chat.socket";
 import type { CreateRegionalAdminInput, UpdateRegionalAdminInput } from "./admin-regional-admin.validation";
 
 const passwordSaltRounds = 12;
@@ -180,7 +181,7 @@ export async function updateRegionalAdmin(id: string, input: UpdateRegionalAdmin
     profileStatus = input.status === "active" ? RegionalAdminStatus.active : RegionalAdminStatus.inactive;
   }
 
-  return await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.update({
       where: { id },
       data: {
@@ -218,6 +219,13 @@ export async function updateRegionalAdmin(id: string, input: UpdateRegionalAdmin
       plainPassword: profile.plainPassword || null
     };
   });
+
+  // Force-disconnect deactivated user from active socket sessions
+  if (accountStatus === AccountStatus.disabled && io) {
+    io.in(`user_${id}`).disconnectSockets(true);
+  }
+
+  return result;
 }
 
 export async function deleteRegionalAdmin(id: string) {
@@ -246,6 +254,11 @@ export async function deleteRegionalAdmin(id: string) {
       }
     });
   });
+
+  // Force-disconnect deleted user from active socket sessions
+  if (io) {
+    io.in(`user_${id}`).disconnectSockets(true);
+  }
 
   return { success: true };
 }
