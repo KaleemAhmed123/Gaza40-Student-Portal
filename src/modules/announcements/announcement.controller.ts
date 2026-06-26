@@ -28,19 +28,19 @@ export const getPublishedAnnouncementHandler = asyncHandler(async (req, res) => 
 
 export const listAdminAnnouncementsHandler = asyncHandler(async (req, res) => {
   const query = listAdminAnnouncementsQuerySchema.parse(req.query);
-  const announcements = await listAdminAnnouncements(query);
+  const announcements = await listAdminAnnouncements(query, req.authUser!);
   sendSuccess(res, { announcements });
 });
 
 export const getAdminAnnouncementHandler = asyncHandler(async (req, res) => {
-  const announcement = await getAdminAnnouncement(req.params.id);
+  const announcement = await getAdminAnnouncement(req.params.id, req.authUser!);
   sendSuccess(res, { announcement });
 });
 
 export const createAnnouncementHandler = asyncHandler(async (req, res) => {
   const input = createAnnouncementSchema.parse(req.body);
   const announcement = await createAnnouncement({
-    userId: req.authUser!.id,
+    user: req.authUser!,
     data: input,
     ipAddress: req.ip,
     userAgent: req.get("user-agent")
@@ -51,7 +51,7 @@ export const createAnnouncementHandler = asyncHandler(async (req, res) => {
 export const updateAnnouncementHandler = asyncHandler(async (req, res) => {
   const input = updateAnnouncementSchema.parse(req.body);
   const announcement = await updateAnnouncement({
-    userId: req.authUser!.id,
+    user: req.authUser!,
     announcementId: req.params.id,
     data: input,
     ipAddress: req.ip,
@@ -62,7 +62,7 @@ export const updateAnnouncementHandler = asyncHandler(async (req, res) => {
 
 export const deleteAnnouncementHandler = asyncHandler(async (req, res) => {
   const announcement = await deleteAnnouncement({
-    userId: req.authUser!.id,
+    user: req.authUser!,
     announcementId: req.params.id,
     ipAddress: req.ip,
     userAgent: req.get("user-agent")

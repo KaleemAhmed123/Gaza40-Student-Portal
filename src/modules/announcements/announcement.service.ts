@@ -1,6 +1,7 @@
 import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
 import { ApiError } from "../../shared/http";
+import { appEmitter, AppEvents } from "../../shared/events";
 import type {
   CreateAnnouncementInput,
   ListAdminAnnouncementsQuery,
@@ -68,6 +69,14 @@ async function ensureAnnouncement(id: string) {
   return announcement;
 }
 
+function ensureAdminAccess(announcement: any, user: { id: string; roles: string[] }) {
+  if (user.roles.includes("regional_admin") && !user.roles.includes("master_admin")) {
+    if (announcement.createdByUserId !== user.id) {
+      throw new ApiError(403, "You do not have permission to access this announcement");
+    }
+  }
+}
+
 export async function listPublishedAnnouncements(query: ListAnnouncementsQuery) {
   return prisma.announcement.findMany({
     where: {
@@ -93,10 +102,16 @@ export async function getPublishedAnnouncement(id: string) {
   return announcement;
 }
 
-export async function listAdminAnnouncements(query: ListAdminAnnouncementsQuery) {
+export async function listAdminAnnouncements(
+  query: ListAdminAnnouncementsQuery,
+  user: { id: string; roles: string[] }
+) {
+  const isRegional = user.roles.includes("regional_admin") && !user.roles.includes("master_admin");
+
   return prisma.announcement.findMany({
     where: {
       deletedAt: null,
+      ...(isRegional ? { createdByUserId: user.id } : {}),
       ...(query.category ? { category: query.category } : {}),
       ...(query.isPublished === undefined ? {} : { isPublished: query.isPublished })
     },
@@ -105,12 +120,14 @@ export async function listAdminAnnouncements(query: ListAdminAnnouncementsQuery)
   });
 }
 
-export async function getAdminAnnouncement(id: string) {
-  return ensureAnnouncement(id);
+export async function getAdminAnnouncement(id: string, user: { id: string; roles: string[] }) {
+  const announcement = await ensureAnnouncement(id);
+  ensureAdminAccess(announcement, user);
+  return announcement;
 }
 
 export async function createAnnouncement(input: {
-  userId: string;
+  user: { id: string; roles: string[] };
   data: CreateAnnouncementInput;
   ipAddress?: string;
   userAgent?: string;
@@ -123,7 +140,7 @@ export async function createAnnouncement(input: {
       title: input.data.title,
       body: input.data.body,
       category: input.data.category,
-      createdByUserId: input.userId,
+      createdByUserId: input.user.id,
       isPublished,
       publishedAt: isPublished ? new Date() : undefined,
       deletedAt: null
@@ -132,7 +149,7 @@ export async function createAnnouncement(input: {
   });
 
   await recordAuditLog({
-    actorUserId: input.userId,
+    actorUserId: input.user.id,
     action: "announcement_created",
     entityType: "announcement",
     entityId: announcement.id,
@@ -141,17 +158,30 @@ export async function createAnnouncement(input: {
     userAgent: input.userAgent
   });
 
+  if (isPublished) {
+    const users = await prisma.user.findMany({
+      where: { deletedAt: null, accountStatus: "active", roles: { hasSome: ["student", "mentor"] } },
+      select: { id: true }
+    });
+    appEmitter.emit(AppEvents.ANNOUNCEMENT_CREATED, {
+      title: announcement.title,
+      targetUserIds: users.map(u => u.id)
+    });
+  }
+
   return announcement;
 }
 
 export async function updateAnnouncement(input: {
-  userId: string;
+  user: { id: string; roles: string[] };
   announcementId: string;
   data: UpdateAnnouncementInput;
   ipAddress?: string;
   userAgent?: string;
 }) {
   const announcement = await ensureAnnouncement(input.announcementId);
+  ensureAdminAccess(announcement, input.user);
+
   await ensureCategory(input.data.category);
 
   const publishNow = input.data.isPublished === true && !announcement.isPublished;
@@ -170,7 +200,7 @@ export async function updateAnnouncement(input: {
   });
 
   await recordAuditLog({
-    actorUserId: input.userId,
+    actorUserId: input.user.id,
     action: "announcement_updated",
     entityType: "announcement",
     entityId: announcement.id,
@@ -179,16 +209,28 @@ export async function updateAnnouncement(input: {
     userAgent: input.userAgent
   });
 
+  if (publishNow) {
+    const users = await prisma.user.findMany({
+      where: { deletedAt: null, accountStatus: "active", roles: { hasSome: ["student", "mentor"] } },
+      select: { id: true }
+    });
+    appEmitter.emit(AppEvents.ANNOUNCEMENT_CREATED, {
+      title: updatedAnnouncement.title,
+      targetUserIds: users.map(u => u.id)
+    });
+  }
+
   return updatedAnnouncement;
 }
 
 export async function deleteAnnouncement(input: {
-  userId: string;
+  user: { id: string; roles: string[] };
   announcementId: string;
   ipAddress?: string;
   userAgent?: string;
 }) {
   const announcement = await ensureAnnouncement(input.announcementId);
+  ensureAdminAccess(announcement, input.user);
 
   const deletedAnnouncement = await prisma.announcement.update({
     where: { id: announcement.id },
@@ -200,7 +242,7 @@ export async function deleteAnnouncement(input: {
   });
 
   await recordAuditLog({
-    actorUserId: input.userId,
+    actorUserId: input.user.id,
     action: "announcement_deleted",
     entityType: "announcement",
     entityId: announcement.id,
