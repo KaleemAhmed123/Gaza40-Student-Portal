@@ -113,7 +113,12 @@ export const getAttachmentUrlHandler = asyncHandler(async (req, res) => {
 export const searchUsersHandler = asyncHandler(async (req, res) => {
   const query = req.query.q as string || "";
   const role = req.query.role as string || undefined;
-  const regionId = req.query.regionId as string || undefined;
+  let regionId = req.query.regionId as string || undefined;
+
+  // Enforce regional admin's own region
+  if (req.authUser?.roles.includes("regional_admin") && !req.authUser?.roles.includes("master_admin")) {
+    regionId = req.authUser.regionId;
+  }
 
   const users = await chatService.searchChatUsers(query, role, regionId);
   sendSuccess(res, { users });

@@ -1,6 +1,7 @@
 import { prisma } from "../../db/prisma";
 import { ApiError } from "../../shared/http";
 import { canDirectChat, canCreateGroup, canAddMemberToGroup } from "./chat.permissions";
+import { appEmitter, AppEvents } from "../../shared/events";
 
 export async function getConversations(userId: string) {
   // If master_admin, fetch ALL groups + own direct chats
@@ -189,6 +190,7 @@ export async function createGroupChat(creatorId: string, name: string, initialMe
     conversation.members.forEach(m => {
       if (m.userId !== creatorId) {
         emitToUser(m.userId, "conversation_updated", { conversationId: conversation.id });
+        appEmitter.emit(AppEvents.CHAT_GROUP_ADDED, { userId: m.userId, groupName: conversation.name });
       }
     });
   });
@@ -220,15 +222,27 @@ export async function addGroupMember(adderId: string, conversationId: string, ta
     prisma.user.findUnique({ where: { id: targetId } }).then((targetUser) => {
       if (targetUser?.email) {
         import("../../shared/email").then(({ sendEmailBestEffort }) => {
-          sendEmailBestEffort({
-            to: [targetUser.email],
-            subject: `You've been added to the group: ${conversation.name}`,
-            text: `You have been added to the conversation "${conversation.name}". Log in to start chatting!`,
-            html: `<p>You have been added to the conversation <strong>"${conversation.name}"</strong>. Log in to start chatting!</p>`,
+          import("../../shared/email-templates").then(({ emailTemplates }) => {
+            import("../../config/env").then(({ env }) => {
+              sendEmailBestEffort({
+                to: [targetUser.email],
+                subject: `You've been added to the group: ${conversation.name}`,
+                text: `You have been added to the conversation "${conversation.name}". Log in to start chatting!`,
+                html: emailTemplates.notification(
+                  targetUser.fullName,
+                  "Added to Group",
+                  `You have been added to the chat group <strong>"${conversation.name}"</strong>. Log in to start chatting with your group!`,
+                  `${env.FRONTEND_URL}/chat`,
+                  "Open Chat"
+                )
+              });
+            });
           });
         });
       }
     });
+
+    appEmitter.emit(AppEvents.CHAT_GROUP_ADDED, { userId: targetId, groupName: conversation.name });
 
     return newMember;
   } catch (error) {
