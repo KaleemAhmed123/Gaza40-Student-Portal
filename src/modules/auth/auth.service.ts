@@ -103,7 +103,6 @@ async function createAuthToken(input: {
       where: {
         userId: input.userId,
         type: input.type,
-        usedAt: null,
         expiresAt: { gt: new Date() }
       },
       data: { usedAt: new Date() }
@@ -113,7 +112,8 @@ async function createAuthToken(input: {
         userId: input.userId,
         type: input.type,
         tokenHash,
-        expiresAt: new Date(Date.now() + input.expiresInMs)
+        expiresAt: new Date(Date.now() + input.expiresInMs),
+        usedAt: null
       }
     })
   ]);
@@ -125,14 +125,16 @@ async function consumeAuthToken(input: { token: string; type: AuthTokenType }) {
   const authToken = await prisma.authToken.findFirst({
     where: {
       tokenHash: hashToken(input.token),
-      type: input.type,
-      usedAt: null,
-      expiresAt: { gt: new Date() }
+      type: input.type
     },
     include: { user: true }
   });
 
-  if (!authToken || authToken.user.deletedAt || authToken.user.accountStatus === "disabled") {
+  if (!authToken || authToken.usedAt || authToken.expiresAt <= new Date()) {
+    throw new ApiError(400, "Invalid or expired token");
+  }
+
+  if (authToken.user.deletedAt || authToken.user.accountStatus === "disabled") {
     throw new ApiError(400, "Invalid or expired token");
   }
 
