@@ -2,6 +2,10 @@ import fs from "fs/promises";
 import { asyncHandler, sendSuccess } from "../../shared/http";
 import { uploadDocumentSchema } from "./document.validation";
 import { getDownloadableDocument, saveDocument } from "./document.service";
+import { verifyCsvDocToken } from "./csv-doc-token";
+import { prisma } from "../../db/prisma";
+import { ApiError } from "../../shared/http";
+import { getSignedStorageUrl } from "../../shared/storage";
 
 export const uploadDocumentHandler = asyncHandler(async (req, res) => {
   if (!req.file) {
@@ -77,4 +81,49 @@ export const previewDocumentHandler = asyncHandler(async (req, res) => {
 
   const stream = await fs.readFile(absolutePath!);
   res.end(stream);
+});
+
+/**
+ * GET /api/documents/:id/signed-download?token=<jwt>
+ *
+ * No platform login required. Validates a CSV doc JWT, then 302-redirects
+ * to a fresh 1-hour R2 presigned URL so the browser downloads the file directly.
+ * Used for offer letter URLs embedded inside generated CSVs.
+ */
+export const csvSignedDownloadHandler = asyncHandler(async (req, res) => {
+  const docId = req.params.id;
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+
+  if (!token) {
+    throw new ApiError(400, "Missing download token");
+  }
+
+  try {
+    verifyCsvDocToken(token, docId);
+  } catch {
+    throw new ApiError(403, "Invalid or expired download token");
+  }
+
+  const doc = await prisma.document.findFirst({
+    where: { id: docId, status: "active", deletedAt: null },
+    select: { storageKey: true, storageBucket: true, originalFilename: true }
+  });
+
+  if (!doc) {
+    throw new ApiError(404, "Document not found");
+  }
+
+  // Generate a fresh 1-hour R2 presigned URL — browser follows and downloads directly
+  const presignedUrl = await getSignedStorageUrl(
+    doc.storageKey,
+    doc.storageBucket,
+    3600,
+    doc.originalFilename
+  );
+
+  if (!presignedUrl) {
+    throw new ApiError(500, "Could not generate download URL");
+  }
+
+  res.redirect(302, presignedUrl);
 });

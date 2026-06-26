@@ -145,6 +145,7 @@ model User {
   notifications         Notification[]
   chatMemberships       ConversationMember[]
   chatMessages          ChatMessage[]
+  csvJobs               CsvJob[]
 
   @@index([accountStatus])
 }
@@ -547,4 +548,54 @@ enum ConversationType {
 enum MemberRole {
   admin
   member
+}
+
+enum CsvDataset {
+  students
+  mentors
+  regional_admins
+}
+
+enum CsvJobStatus {
+  pending
+  generating
+  completed
+  failed
+  expired
+}
+
+model CsvJob {
+  id                   String        @id @default(auto()) @map("_id") @db.ObjectId
+  requestedByUserId    String        @db.ObjectId
+  dataset              CsvDataset
+  status               CsvJobStatus  @default(pending)
+  csvVersion           String        // e.g. "students-v1"
+  filters              Json?         // full filter object stored for audit / duplicate detection
+  filterSummary        String?       // human-readable display string e.g. "Country: UK"
+  columns              String[]      @default([])
+  dateRangeField       String
+  dateRangeFrom        DateTime
+  dateRangeTo          DateTime
+  cancelRequested      Boolean       @default(false)
+  // R2 storage
+  storageBucket        String?
+  storageKey           String?       // csv-exports/YYYY/MM/<dataset>/<jobId>.csv
+  // Progress (no estimatedRows — avoids expensive COUNT; UI shows live processedRows)
+  processedRows        Int           @default(0)
+  // Completion metadata
+  rowCount             Int?
+  fileSizeBytes        Int?
+  generationDurationMs Int?
+  errorMessage         String?
+  expiresAt            DateTime?     // now + CSV_SIGNED_URL_TTL_DAYS on completion
+  completedAt          DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  requestedBy          User          @relation(fields: [requestedByUserId], references: [id])
+
+  @@index([requestedByUserId])
+  @@index([status])
+  @@index([dataset])
+  @@index([expiresAt])
+  @@index([createdAt])
 }

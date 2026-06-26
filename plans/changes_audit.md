@@ -747,9 +747,47 @@ These files should not be committed unless deliberately needed:
 
 - Re-enabled required profile document validation before `POST /api/student/profile/me/submit`.
 - Profile submission now requires active `national_id` and `consent_form` documents.
-- Profile submission requires `moi_letter` when `englishMoi=true`.
-- Profile submission requires `passport` when passport status is `valid` or `valid_expires_within_year`.
-
-### Notes
-
 - This intentionally shifts integration responsibility to the frontend: the onboarding flow must upload documents through `POST /api/documents` before submitting the profile for review.
+
+## 2026-06-26 - CSV Generator Module Implementation
+
+### Files Added
+
+- `src/modules/csv-generator/csv-column-definitions.ts`
+  - Defines `STUDENT_COLUMNS`, `MENTOR_COLUMNS`, and `REGIONAL_ADMIN_COLUMNS` as the single source of truth.
+- `src/modules/csv-generator/csv-generator.validation.ts`
+  - Enforces Zod validations, including the maximum 90-day range and column validation.
+- `src/modules/csv-generator/csv-query-builder.ts`
+  - Standardizes search filters, scoping Regional Admins to their respective regions.
+- `src/modules/csv-generator/csv-storage.service.ts`
+  - Manages uploads, signed URLs, and deletions using R2.
+- `src/modules/csv-generator/csv-job.service.ts`
+  - Oversees async background workers, listing, deleting, retrying, and scheduling cleanup.
+- `src/modules/csv-generator/csv-generator.controller.ts`
+  - Handles API requests and routes execution to core services.
+- `src/modules/csv-generator/csv-generator.routes.ts`
+  - Maps module handlers to HTTP routes with authentication and role filters.
+- `src/modules/csv-generator/csv-generator.cron.ts`
+  - Defines a daily cleanup job that runs at 02:00 UTC.
+- `src/modules/csv-generator/student-export.service.ts`
+  - Processes student placements pagination and parses financial gap values.
+- `src/modules/csv-generator/mentor-export.service.ts`
+  - Processes mentors and their assigned students/offers pagination.
+- `src/modules/csv-generator/regional-admin-export.service.ts`
+  - Processes regional admin placement exports.
+- `src/modules/documents/csv-doc-token.ts`
+  - Signs and verifies secure JWT tokens for offer letter direct-download links.
+
+### Files Updated
+
+- `prisma/schema.prisma`
+  - Added enums `CsvDataset` and `CsvJobStatus`, and model `CsvJob`.
+- `src/app.ts`
+  - Registered `/api/csv-generator` routes.
+- `src/config/env.ts`
+  - Added configurable parameters for signed URLs and CSV doc links.
+- `src/modules/documents/document.controller.ts` & `document.routes.ts`
+  - Created unauthenticated JWT redirection handler for direct file downloads.
+- `src/server.ts`
+  - Added stuck job fail-safe recovery on startup and registered cleanup cron.
+

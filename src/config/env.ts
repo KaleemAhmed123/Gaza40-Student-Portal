@@ -35,7 +35,11 @@ const envSchema = z.object({
   COOKIE_SECURE: z
     .enum(["true", "false"])
     .default("false")
-    .transform((value) => value === "true")
+    .transform((value) => value === "true"),
+  // CSV Generator: configurable signed URL TTL (days). Default 30.
+  CSV_SIGNED_URL_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  // Token TTL for in-CSV offer letter redirect links (days). Default 30.
+  CSV_DOC_LINK_TTL_DAYS: z.coerce.number().int().positive().default(30),
 });
 
 export const env = envSchema.parse(process.env);
