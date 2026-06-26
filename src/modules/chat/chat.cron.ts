@@ -1,4 +1,5 @@
 import cron from "node-cron";
+import * as Sentry from "@sentry/node";
 import { prisma } from "../../db/prisma";
 import { deleteFromStorage } from "../../shared/storage";
 
@@ -43,6 +44,7 @@ export const startChatCronJobs = () => {
       console.log(`[Cron] Cleanup complete. Deleted ${result.count} old messages and ${deletedAttachments} R2 attachments.`);
 
     } catch (error) {
+      Sentry.captureException(error);
       console.error("[Cron] Error during chat retention cleanup:", error);
     }
   });
