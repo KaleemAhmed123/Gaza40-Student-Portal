@@ -8,13 +8,15 @@ type AccessTokenPayload = {
   sub: string;
   email: string;
   roles: RoleCode[];
+  regionId?: string;
 };
 
 export function signAccessToken(user: AuthUser) {
   const payload: AccessTokenPayload = {
     sub: user.id,
     email: user.email,
-    roles: user.roles
+    roles: user.roles,
+    regionId: user.regionId
   };
 
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
@@ -28,7 +30,8 @@ export function verifyAccessToken(token: string): AuthUser {
   return {
     id: decoded.sub,
     email: decoded.email,
-    roles: decoded.roles
+    roles: decoded.roles,
+    regionId: decoded.regionId
   };
 }
 
@@ -36,7 +39,8 @@ export function signRefreshToken(user: AuthUser) {
   const payload: AccessTokenPayload = {
     sub: user.id,
     email: user.email,
-    roles: user.roles
+    roles: user.roles,
+    regionId: user.regionId
   };
 
   return jwt.sign(payload, env.JWT_REFRESH_SECRET, {
@@ -50,6 +54,7 @@ export function verifyRefreshToken(token: string): AuthUser {
   return {
     id: decoded.sub,
     email: decoded.email,
-    roles: decoded.roles
+    roles: decoded.roles,
+    regionId: decoded.regionId
   };
 }

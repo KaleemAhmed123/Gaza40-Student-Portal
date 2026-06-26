@@ -8,6 +8,7 @@ export type AuthUser = {
   id: string;
   email: string;
   roles: RoleCodeType[];
+  regionId?: string;
 };
 
 declare global {

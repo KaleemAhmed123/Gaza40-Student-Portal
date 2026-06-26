@@ -193,6 +193,7 @@ async function toAuthUser(user: AuthUserRecord | LoginUserRecord | null) {
     fullName: validUser.fullName,
     phone: validUser.phone,
     roles: validUser.roles,
+    regionId: regionalAdminProfile?.regionId,
     accountStatus: validUser.accountStatus,
     emailVerifiedAt: validUser.emailVerifiedAt,
     studentProfile,
