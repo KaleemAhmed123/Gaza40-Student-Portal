@@ -1,4 +1,3 @@
-import { Resend } from "resend";
 import nodemailer from "nodemailer";
 import { env } from "../config/env";
 
@@ -9,17 +8,7 @@ export type EmailInput = {
   html?: string;
 };
 
-let resendClient: Resend | null = null;
 let smtpTransporter: nodemailer.Transporter | null = null;
-
-function getResendClient() {
-  if (!env.RESEND_API_KEY) {
-    return null;
-  }
-
-  resendClient ??= new Resend(env.RESEND_API_KEY);
-  return resendClient;
-}
 
 function getSmtpTransporter() {
   if (!env.SMTP_HOST || !env.SMTP_PORT) {
@@ -49,46 +38,21 @@ export async function sendEmailBestEffort(input: EmailInput) {
   }
 
   try {
-    if (env.EMAIL_PROVIDER === "smtp") {
-      const transporter = getSmtpTransporter();
-      if (!transporter) {
-        console.warn("Email notification skipped: SMTP is not configured properly");
-        return;
-      }
-
-      await transporter.sendMail({
-        from: env.EMAIL_FROM,
-        to: recipients,
-        subject: input.subject,
-        text: input.text,
-        html: input.html,
-      });
-
-      console.info("Email notification sent via SMTP");
-
-    } else {
-      // Default to Resend
-      const client = getResendClient();
-      if (!client) {
-        console.warn("Email notification skipped: RESEND_API_KEY is not configured");
-        return;
-      }
-
-      const result = await client.emails.send({
-        from: env.EMAIL_FROM,
-        to: recipients,
-        subject: input.subject,
-        text: input.text,
-        html: input.html,
-      });
-
-      if (result.error) {
-        console.error(`Email notification failed (Resend): ${result.error.message}`);
-        return;
-      }
-
-      console.info("Email notification accepted by Resend");
+    const transporter = getSmtpTransporter();
+    if (!transporter) {
+      console.warn("Email notification skipped: SMTP is not configured properly");
+      return;
     }
+
+    await transporter.sendMail({
+      from: env.EMAIL_FROM,
+      to: recipients,
+      subject: input.subject,
+      text: input.text,
+      html: input.html,
+    });
+
+    console.info("Email notification sent via SMTP");
   } catch (error) {
     console.error(
       `Email notification failed: ${error instanceof Error ? error.message : "Unknown email error"}`
