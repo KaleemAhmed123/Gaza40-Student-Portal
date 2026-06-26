@@ -85,7 +85,7 @@ const baseTemplate = (content: string, title: string) => `
 <body>
   <div class="container">
     <div class="header">
-      <img src="${env.FRONTEND_URL}/LOGO.png" alt="Gaza40 Logo" style="max-height: 60px; display: block; margin: 0 auto;" />
+      <img src="cid:gaza40logo" alt="Gaza40 Logo" style="max-height: 60px; display: block; margin: 0 auto;" />
     </div>
     <div class="content">
       ${content}
@@ -177,43 +177,51 @@ export const emailTemplates = {
 
   // Regional Admin Invite
   regionalAdminInvite: (name: string, email: string, temporaryPassword?: string, regionName?: string) => {
-    let passwordHtml = '';
-    
+    let credentialsHtml = '';
     if (temporaryPassword) {
-      passwordHtml = `
-        <tr>
-          <td>Password:</td>
-          <td><code>${temporaryPassword}</code></td>
-        </tr>
-      `;
-    }
-
-    let regionHtml = '';
-    if (regionName) {
-      regionHtml = `
-        <tr>
-          <td>Region:</td>
-          <td>${regionName}</td>
-        </tr>
+      credentialsHtml = `
+        <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          <p style="margin: 0 0 12px 0; font-weight: bold; color: ${TEMPLATE_COLORS.primary};">🔑 Your Login Credentials</p>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 6px 0; font-weight: bold; color: ${TEMPLATE_COLORS.textLight}; width: 100px;">Email:</td>
+              <td style="padding: 6px 0;"><code style="background: #e5e7eb; padding: 2px 8px; border-radius: 4px;">${email}</code></td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; font-weight: bold; color: ${TEMPLATE_COLORS.textLight};">Password:</td>
+              <td style="padding: 6px 0;"><code style="background: #e5e7eb; padding: 2px 8px; border-radius: 4px;">${temporaryPassword}</code></td>
+            </tr>
+            ${regionName ? `<tr>
+              <td style="padding: 6px 0; font-weight: bold; color: ${TEMPLATE_COLORS.textLight};">Region:</td>
+              <td style="padding: 6px 0;"><strong>${regionName}</strong></td>
+            </tr>` : ''}
+          </table>
+        </div>
       `;
     }
 
     const content = `
-      <h2>Regional Admin Account Created</h2>
+      <h2>You've Been Invited as a Regional Admin</h2>
       <p>Hello ${name},</p>
-      <p>An administrator has created a Regional Admin account for you on the Gaza40 platform.</p>
-      <table class="data-table">
-        <tr>
-          <td>Email:</td>
-          <td>${email}</td>
-        </tr>
-        ${regionHtml}
-        ${passwordHtml}
-      </table>
-      <p>Please log in using the button below. ${temporaryPassword ? '<strong>We strongly recommend changing your password immediately after logging in.</strong>' : ''}</p>
+      <p>A Master Administrator has created a <strong>Regional Admin</strong> account for you on the <strong>Gaza40</strong> platform${regionName ? ` for the <strong>${regionName}</strong> region` : ''}.</p>
+      
+      <p>As a Regional Admin, you will be able to:</p>
+      <ul style="color: ${TEMPLATE_COLORS.textLight}; line-height: 2;">
+        <li>Review and manage student profiles in your assigned region</li>
+        <li>Oversee offer reviews and university assignments</li>
+        <li>Handle student queries and support requests</li>
+        <li>Manage volunteers assigned to your region</li>
+      </ul>
+
+      ${credentialsHtml}
+
+      <p><strong>⚠️ Important:</strong> Please change your password immediately after your first login for security purposes.</p>
+      
       <center>
-        <a href="${env.FRONTEND_URL}/login" class="btn">Log In to Dashboard</a>
+        <a href="${env.FRONTEND_URL}/login" class="btn">Log In to Your Dashboard</a>
       </center>
+      
+      <p style="margin-top: 20px; font-size: 12px; color: ${TEMPLATE_COLORS.textLight};">If you did not expect this email or believe it was sent in error, please contact the Master Administrator.</p>
     `;
     return baseTemplate(content, "Regional Admin Invite - Gaza40");
   }
