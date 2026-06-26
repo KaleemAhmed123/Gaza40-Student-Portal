@@ -5,6 +5,7 @@ import { env } from "../../config/env";
 import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
 import { sendEmailBestEffort } from "../../shared/email";
+import { emailTemplates } from "../../shared/email-templates";
 import { ApiError } from "../../shared/http";
 import type {
   forgotPasswordSchema,
@@ -231,6 +232,13 @@ export async function registerStudent(input: RegisterStudentInput) {
     }
   });
 
+  void sendEmailBestEffort({
+    to: [user.email],
+    subject: "Welcome to Gaza40",
+    text: `Hello ${user.fullName}, welcome to Gaza40!`,
+    html: emailTemplates.welcome(user.fullName, 'student')
+  });
+
   return buildAuthUser(user.id);
 }
 
@@ -260,6 +268,29 @@ export async function registerVolunteer(input: RegisterVolunteerInput) {
       }
     }
   });
+
+  void sendEmailBestEffort({
+    to: [user.email],
+    subject: "Welcome to Gaza40",
+    text: `Hello ${user.fullName}, welcome to Gaza40!`,
+    html: emailTemplates.welcome(user.fullName, 'mentor')
+  });
+
+  // Notify Master Admins about the new volunteer signup
+  prisma.user.findMany({
+    where: { roles: { has: RoleCode.master_admin }, accountStatus: 'active', deletedAt: null },
+    select: { email: true }
+  }).then(masterAdmins => {
+    const adminEmails = masterAdmins.map(a => a.email);
+    if (adminEmails.length > 0) {
+      sendEmailBestEffort({
+        to: adminEmails,
+        subject: "New Volunteer Signup - Gaza40",
+        text: `A new volunteer (${user.fullName}, ${user.email}) has signed up.`,
+        html: emailTemplates.adminNewVolunteer(user.fullName, user.email)
+      });
+    }
+  }).catch(console.error);
 
   return buildAuthUser(user.id);
 }
@@ -313,8 +344,9 @@ export async function forgotPassword(input: ForgotPasswordInput) {
 
   sendEmailBestEffort({
     to: [user.email],
-    subject: "Reset your Gaza40+ password",
-    text: `Hi ${user.fullName},\n\nUse this link to reset your password:\n${buildFrontendUrl("/reset-password", token)}\n\nThis link expires in 1 hour.`
+    subject: "Reset your Gaza40 password",
+    text: `Hi ${user.fullName},\n\nUse this link to reset your password:\n${buildFrontendUrl("/reset-password", token)}\n\nThis link expires in 1 hour.`,
+    html: emailTemplates.forgotPassword(user.fullName, buildFrontendUrl("/reset-password", token))
   });
 
   return { message: "If the email exists, a reset link has been sent." };
@@ -374,8 +406,15 @@ export async function sendVerificationEmail(
 
   sendEmailBestEffort({
     to: [user.email],
-    subject: "Verify your Gaza40+ email",
-    text: `Hi ${user.fullName},\n\nUse this link to verify your email:\n${buildFrontendUrl(redirectPath, token)}\n\nThis link expires in 24 hours.`
+    subject: "Verify your Gaza40 email",
+    text: `Hi ${user.fullName},\n\nUse this link to verify your email:\n${buildFrontendUrl(redirectPath, token)}\n\nThis link expires in 24 hours.`,
+    html: emailTemplates.notification(
+      user.fullName, 
+      "Email Verification", 
+      "Please verify your email address to unlock full access to the Gaza40 platform. This link will expire in 24 hours.", 
+      buildFrontendUrl(redirectPath, token), 
+      "Verify Email"
+    )
   });
 
   return { sent: true };

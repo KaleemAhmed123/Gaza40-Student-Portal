@@ -2,7 +2,10 @@ import { QueryStatus, RegionalAdminStatus, RoleCode, VolunteerStatus } from "@pr
 import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
 import { sendEmailBestEffort } from "../../shared/email";
+import { emailTemplates } from "../../shared/email-templates";
+import { env } from "../../config/env";
 import { ApiError } from "../../shared/http";
+import { appEmitter, AppEvents } from "../../shared/events";
 import type {
   AddQueryMessageInput,
   AssignQueryInput,
@@ -201,24 +204,45 @@ async function notifyAdmins(queryId: string) {
 
   sendEmailBestEffort({
     to: admins.map((admin) => admin.email),
-    subject: `New Gaza40+ query: ${query.title}`,
-    text: `${query.student.fullName} raised a query.\n\n${query.message}`
+    subject: `New Gaza40 query: ${query.title}`,
+    text: `${query.student.fullName} raised a query.\n\n${query.message}`,
+    html: emailTemplates.notification(
+      "Admin",
+      "New Query Raised",
+      `${query.student.fullName} raised a new query: <strong>${query.title}</strong><br/><br/>${query.message}`,
+      `${env.FRONTEND_URL}/admin/queries/${query.id}`,
+      "View Query"
+    )
   });
 }
 
 function notifyAssignee(email: string, title: string) {
   sendEmailBestEffort({
     to: [email],
-    subject: `Gaza40+ query assigned: ${title}`,
-    text: `A query has been assigned to you: ${title}`
+    subject: `Gaza40 query assigned: ${title}`,
+    text: `A query has been assigned to you: ${title}`,
+    html: emailTemplates.notification(
+      "Mentor",
+      "Query Assigned",
+      `A new query has been assigned to you: <strong>${title}</strong>. Please log in to review and respond.`,
+      `${env.FRONTEND_URL}/mentor/queries`,
+      "View My Queries"
+    )
   });
 }
 
 function notifyStudent(email: string, title: string) {
   sendEmailBestEffort({
     to: [email],
-    subject: `Gaza40+ query updated: ${title}`,
-    text: `Your query has been updated: ${title}`
+    subject: `Gaza40 query updated: ${title}`,
+    text: `Your query has been updated: ${title}`,
+    html: emailTemplates.notification(
+      "Student",
+      "Query Updated",
+      `Your query <strong>${title}</strong> has a new update. Please log in to view the latest messages or status.`,
+      `${env.FRONTEND_URL}/student/queries`,
+      "View My Queries"
+    )
   });
 }
 
@@ -365,6 +389,14 @@ export async function addStudentMessage(input: {
     notifyAssignee(query.assignedTo.email, query.title);
   }
 
+  if (query.assignedToUserId) {
+    appEmitter.emit(AppEvents.QUERY_REPLIED, {
+      targetUserId: query.assignedToUserId,
+      queryId: query.id,
+      title: query.title
+    });
+  }
+
   return message;
 }
 
@@ -442,6 +474,11 @@ export async function assignQuery(input: {
   });
 
   notifyAssignee(assignee.email, query.title);
+  appEmitter.emit(AppEvents.QUERY_ASSIGNED, {
+    assigneeUserId: assignee.id,
+    queryId: query.id,
+    title: query.title
+  });
 
   return updatedQuery;
 }
@@ -476,6 +513,12 @@ export async function addAdminMessage(input: {
     entityId: query.id,
     ipAddress: input.ipAddress,
     userAgent: input.userAgent
+  });
+
+  appEmitter.emit(AppEvents.QUERY_REPLIED, {
+    targetUserId: query.studentUserId,
+    queryId: query.id,
+    title: query.title
   });
 
   return message;

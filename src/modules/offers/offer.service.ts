@@ -1,9 +1,13 @@
 import { DocumentStatus, DocumentType, OfferReviewStatus, Prisma, ProfileStatus, RoleCode, QueryStatus, VolunteerStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
+import { sendEmailBestEffort } from "../../shared/email";
+import { emailTemplates } from "../../shared/email-templates";
+import { env } from "../../config/env";
 import { toCsv } from "../../shared/csv";
 import { ApiError } from "../../shared/http";
 import { notifyAdminsOfOfferReview } from "../../shared/review-email";
+import { appEmitter, AppEvents } from "../../shared/events";
 import {
   calculateOfferFinancialSummary,
   decimalToNumber,
@@ -540,6 +544,13 @@ export async function submitMyOffer(input: {
       courseName: submittedOffer.courseName,
       reason: "submitted"
     });
+
+    appEmitter.emit(AppEvents.OFFER_SUBMITTED, {
+      studentUserId: input.userId,
+      studentName: student.fullName,
+      offerId: submittedOffer.id,
+      regionId: submittedOffer.regionId
+    });
   }
 
   const financialRules = await getOfferFinancialRules();
@@ -1015,6 +1026,13 @@ export async function reviewOffer(input: {
     userAgent: input.userAgent
   });
 
+  // Emit in-app notification
+  appEmitter.emit(AppEvents.OFFER_STATUS_UPDATED, { 
+    studentUserId: offer.studentUserId, 
+    status: nextStatus,
+    offerId: offer.id
+  });
+
   return formatOffer(reviewedOffer, await getOfferFinancialRules());
 }
 
@@ -1073,6 +1091,26 @@ export async function assignMentorToOffer(input: {
     metadata: { mentorId: mentor.id, mentorName: mentor.fullName },
     ipAddress: input.ipAddress,
     userAgent: input.userAgent
+  });
+
+  // Emit in-app notification for the mentor
+  appEmitter.emit(AppEvents.OFFER_MENTOR_ASSIGNED, {
+    mentorUserId: mentor.id,
+    offerId: offer.id,
+    studentName: offer.student.fullName
+  });
+
+  sendEmailBestEffort({
+    to: [mentor.email],
+    subject: "Gaza40 Offer Assigned",
+    text: `You have been assigned to review an offer for ${offer.student.fullName}.`,
+    html: emailTemplates.notification(
+      mentor.fullName,
+      "Offer Assigned",
+      `You have been assigned to review an offer for <strong>${offer.student.fullName}</strong>. Please log in to review the details.`,
+      `${env.FRONTEND_URL}/mentor/offers/${offer.id}`,
+      "View Offer"
+    )
   });
 
   return formatOffer(updatedOffer, await getOfferFinancialRules());

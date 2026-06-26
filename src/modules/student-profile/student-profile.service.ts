@@ -3,6 +3,7 @@ import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
 import { ApiError } from "../../shared/http";
 import { notifyMasterAdminsOfProfileSubmission } from "../../shared/review-email";
+import { appEmitter, AppEvents } from "../../shared/events";
 import type { updateStudentProfileSchema } from "./student-profile.validation";
 import type { z } from "zod";
 
@@ -266,6 +267,9 @@ export async function submitMyStudentProfile(input: {
       );
     });
   }
+
+  // Emit event for in-app notification
+  appEmitter.emit(AppEvents.PROFILE_SUBMITTED, { studentUserId: input.userId });
 
   return submittedProfile;
 }
