@@ -1,7 +1,9 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "../../../db/prisma";
 import { ApiError } from "../../../shared/http";
-import { RoleCode, AccountStatus, RegionalAdminStatus } from "@prisma/client";
+import { RoleCode, AccountStatus, RegionalAdminStatus, AuthTokenType } from "@prisma/client";
+import { sendEmailBestEffort } from "../../../shared/email";
+import { emailTemplates } from "../../../shared/email-templates";
 import type { CreateRegionalAdminInput, UpdateRegionalAdminInput } from "./admin-regional-admin.validation";
 
 const passwordSaltRounds = 12;
@@ -46,11 +48,20 @@ export async function createRegionalAdmin(input: CreateRegionalAdminInput, creat
         userId: user.id,
         regionId: region.id,
         assignedByUserId: creatorUserId,
+        plainPassword: input.password,
         deletedAt: null
       },
       include: {
         region: true
       }
+    });
+
+    // Send the welcome email with credentials
+    sendEmailBestEffort({
+      to: [user.email],
+      subject: "Welcome to Gaza40 - Regional Admin Account Created",
+      text: `Hello ${user.fullName},\n\nYour Regional Admin account has been created.\nEmail: ${user.email}\nPassword: ${input.password}\nRegion: ${region.name}\n\nPlease log in and change your password.`,
+      html: emailTemplates.regionalAdminInvite(user.fullName, user.email, input.password, region.name)
     });
 
     return {
@@ -93,7 +104,8 @@ export async function listRegionalAdmins() {
       id: user.regionalAdminProfile.region.id,
       code: user.regionalAdminProfile.region.code,
       name: user.regionalAdminProfile.region.name
-    } : null
+    } : null,
+    plainPassword: user.regionalAdminProfile?.plainPassword || null
   }));
 }
 
@@ -152,7 +164,8 @@ export async function updateRegionalAdmin(id: string, input: UpdateRegionalAdmin
       where: { userId: id },
       data: {
         ...(input.regionId ? { regionId: input.regionId } : {}),
-        ...(profileStatus ? { status: profileStatus } : {})
+        ...(profileStatus ? { status: profileStatus } : {}),
+        ...(input.password ? { plainPassword: input.password } : {})
       },
       include: {
         region: true
@@ -170,7 +183,8 @@ export async function updateRegionalAdmin(id: string, input: UpdateRegionalAdmin
         id: profile.region.id,
         code: profile.region.code,
         name: profile.region.name
-      }
+      },
+      plainPassword: profile.plainPassword || null
     };
   });
 }

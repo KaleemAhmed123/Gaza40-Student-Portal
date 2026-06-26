@@ -3,6 +3,7 @@ import { prisma } from "../../../db/prisma";
 import { recordAuditLog } from "../../../shared/audit";
 import { sendEmailBestEffort } from "../../../shared/email";
 import { ApiError } from "../../../shared/http";
+import { appEmitter, AppEvents } from "../../../shared/events";
 
 
 const profileInclude = {
@@ -142,6 +143,15 @@ export async function reviewStudentProfile(input: {
         text: `Hi ${studentUser.fullName},\n\nThank you for submitting your Gaza40+ onboarding profile. Unfortunately, after review, we were unable to approve your profile at this time.${reasonSection}\nIf you have questions or would like to appeal this decision, please contact us at ${process.env.ADMIN_CONTACT_EMAIL ?? 'admin@gaza40.org'}.\n\nBest regards,\nThe Gaza40+ Team`
       });
     }
+  }
+
+  // Emit event for in-app notifications
+  if (input.status === ProfileStatus.approved) {
+    appEmitter.emit(AppEvents.PROFILE_APPROVED, { studentUserId: profile.userId });
+  } else if (input.status === ProfileStatus.rejected) {
+    appEmitter.emit(AppEvents.PROFILE_REJECTED, { studentUserId: profile.userId, reason: input.notes });
+  } else if (input.status === ProfileStatus.changes_requested) {
+    appEmitter.emit(AppEvents.PROFILE_CHANGES_REQUESTED, { studentUserId: profile.userId });
   }
 
   return reviewedProfile;
