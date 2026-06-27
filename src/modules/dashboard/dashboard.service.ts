@@ -1,6 +1,8 @@
 import { OfferReviewStatus, QueryStatus, RoleCode } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { ApiError } from "../../shared/http";
+import { calculateOfferFinancialSummary, decimalToNumber } from "../offers/offer-financial";
+import { getOfferFinancialRules } from "../offers/offer.service";
 
 type AdminScope =
   | { role: "master_admin"; regionId?: never; regionName?: never }
@@ -187,7 +189,8 @@ export async function getAdminDashboard(userId: string) {
     draftAnnouncements,
     recentOffers,
     recentQueries,
-    recentAuditLogs
+    recentAuditLogs,
+    approvedOffersForMetrics
   ] = await Promise.all([
     prisma.user.count({ where: studentWhere }),
     prisma.studentProfile.groupBy({
@@ -266,8 +269,93 @@ export async function getAdminDashboard(userId: string) {
           orderBy: { createdAt: "desc" },
           take: 5
         })
-      : prisma.auditLog.findMany({ where: { id: "__never__" }, take: 0 })
+      : prisma.auditLog.findMany({ where: { id: "__never__" }, take: 0 }),
+    prisma.offer.findMany({
+      where: {
+        reviewStatus: OfferReviewStatus.approved,
+        deletedAt: null,
+        ...(scope.role === "regional_admin" ? { regionId: scope.regionId } : {})
+      },
+      select: {
+        id: true,
+        studentUserId: true,
+        region: { select: { name: true } },
+        courseLevel: true,
+        durationYears: true,
+        tuitionFeePerYear: true,
+        scholarshipAmountPerYear: true,
+        scholarshipCoversLivingCost: true,
+        privateFundingAmount: true,
+        livingCostLocationKey: true,
+        livingCostForVisa: true,
+        boardingFees: true,
+        programmeStartDate: true
+      }
+    })
   ]);
+
+  let totalFundingGap = 0;
+  let fullyFundedStudentsCount = 0;
+
+  try {
+    const financialRules = await getOfferFinancialRules();
+    const studentOffersMap: Record<string, typeof approvedOffersForMetrics> = {};
+    for (const offer of approvedOffersForMetrics) {
+      if (!studentOffersMap[offer.studentUserId]) {
+        studentOffersMap[offer.studentUserId] = [];
+      }
+      studentOffersMap[offer.studentUserId].push(offer);
+    }
+
+    const nowTime = Date.now();
+
+    for (const studentUserId of Object.keys(studentOffersMap)) {
+      const studentOffers = studentOffersMap[studentUserId];
+      
+      const offersWithGap = studentOffers.map((offer) => {
+        let gap = 0;
+        try {
+          const summary = calculateOfferFinancialSummary(financialRules, {
+            countryName: offer.region.name,
+            courseLevel: offer.courseLevel,
+            durationYears: decimalToNumber(offer.durationYears),
+            tuitionFeePerYear: decimalToNumber(offer.tuitionFeePerYear),
+            scholarshipAmountPerYear: offer.scholarshipAmountPerYear
+              ? decimalToNumber(offer.scholarshipAmountPerYear)
+              : undefined,
+            scholarshipCoversLivingCost: offer.scholarshipCoversLivingCost,
+            privateFundingAmount: decimalToNumber(offer.privateFundingAmount),
+            livingCostLocationKey: offer.livingCostLocationKey,
+            livingCostForVisa: offer.livingCostForVisa ? decimalToNumber(offer.livingCostForVisa) : undefined,
+            boardingFees: offer.boardingFees ? decimalToNumber(offer.boardingFees) : undefined
+          });
+          gap = summary.tuitionFeePerYearGap + summary.livingCostGap;
+        } catch (e) {
+          console.error(`Error calculating gap for offer ${offer.id}:`, e);
+        }
+        return { offer, gap };
+      });
+
+      if (offersWithGap.length > 0) {
+        // sum of all approved offer's funding gap - pick the one with least gap per student
+        const minGapObj = offersWithGap.reduce((min, curr) => (curr.gap < min.gap ? curr : min), offersWithGap[0]);
+        totalFundingGap += minGapObj.gap;
+
+        // count of students who have fully funded approved offers - pick the one with nearest program start date
+        const nearestOfferObj = offersWithGap.reduce((nearest, curr) => {
+          const currDiff = Math.abs(new Date(curr.offer.programmeStartDate).getTime() - nowTime);
+          const nearestDiff = Math.abs(new Date(nearest.offer.programmeStartDate).getTime() - nowTime);
+          return currDiff < nearestDiff ? curr : nearest;
+        }, offersWithGap[0]);
+
+        if (nearestOfferObj.gap === 0) {
+          fullyFundedStudentsCount += 1;
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Failed to calculate dashboard funding gap and fully funded metrics:", err);
+  }
 
   return {
     scope,
@@ -303,7 +391,9 @@ export async function getAdminDashboard(userId: string) {
       offers: recentOffers,
       queries: recentQueries,
       auditLogs: recentAuditLogs
-    }
+    },
+    totalFundingGap,
+    fullyFundedStudentsCount
   };
 }
 

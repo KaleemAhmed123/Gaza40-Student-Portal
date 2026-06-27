@@ -140,7 +140,7 @@ async function getApprovedStudentProfile(userId: string) {
   return profile;
 }
 
-async function getOfferFinancialRules() {
+export async function getOfferFinancialRules() {
   const config = await prisma.appConfig.findUnique({
     where: { key: "offer_financial_rules" }
   });
