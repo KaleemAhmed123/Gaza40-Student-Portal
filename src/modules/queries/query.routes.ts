@@ -4,6 +4,7 @@ import { requireActiveMentor, requireAuth, requireRole } from "../../middleware/
 import {
   addAdminQueryMessageHandler,
   assignQueryHandler,
+  escalateAdminQueryHandler,
   getAdminQueryHandler,
   listAdminQueriesHandler,
   resolveAdminQueryHandler
@@ -11,6 +12,7 @@ import {
 import {
   acceptMentorQueryHandler,
   addMentorQueryMessageHandler,
+  escalateMentorQueryHandler,
   getMentorQueryHandler,
   listMentorQueriesHandler,
   resolveMentorQueryHandler
@@ -38,6 +40,7 @@ adminQueryRouter.get("/:id", getAdminQueryHandler);
 adminQueryRouter.patch("/:id/assign", assignQueryHandler);
 adminQueryRouter.post("/:id/messages", addAdminQueryMessageHandler);
 adminQueryRouter.patch("/:id/resolve", resolveAdminQueryHandler);
+adminQueryRouter.patch("/:id/escalate", escalateAdminQueryHandler);
 
 mentorQueryRouter.use(requireAuth, requireActiveMentor);
 mentorQueryRouter.get("/", listMentorQueriesHandler);
@@ -45,3 +48,5 @@ mentorQueryRouter.get("/:id", getMentorQueryHandler);
 mentorQueryRouter.patch("/:id/accept", acceptMentorQueryHandler);
 mentorQueryRouter.post("/:id/messages", addMentorQueryMessageHandler);
 mentorQueryRouter.patch("/:id/resolve", resolveMentorQueryHandler);
+mentorQueryRouter.patch("/:id/escalate", escalateMentorQueryHandler);
+

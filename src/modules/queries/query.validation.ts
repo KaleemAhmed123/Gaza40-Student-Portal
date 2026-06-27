@@ -24,7 +24,12 @@ export const assignQuerySchema = z.object({
   assignedToUserId: objectIdSchema
 });
 
+export const escalateQuerySchema = z.object({
+  remark: z.string().min(3).max(2000)
+});
+
 export type CreateQueryInput = z.infer<typeof createQuerySchema>;
 export type AddQueryMessageInput = z.infer<typeof addQueryMessageSchema>;
 export type ListQueriesQuery = z.infer<typeof listQueriesQuerySchema>;
 export type AssignQueryInput = z.infer<typeof assignQuerySchema>;
+export type EscalateQueryInput = z.infer<typeof escalateQuerySchema>;

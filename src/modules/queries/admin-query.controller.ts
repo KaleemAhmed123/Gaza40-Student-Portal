@@ -2,6 +2,7 @@ import { asyncHandler, sendSuccess } from "../../shared/http";
 import {
   addAdminMessage,
   assignQuery,
+  escalateAdminQuery,
   getAdminQuery,
   listAdminQueries,
   resolveAdminQuery
@@ -9,6 +10,7 @@ import {
 import {
   addQueryMessageSchema,
   assignQuerySchema,
+  escalateQuerySchema,
   listQueriesQuerySchema
 } from "./query.validation";
 
@@ -51,6 +53,18 @@ export const resolveAdminQueryHandler = asyncHandler(async (req, res) => {
   const query = await resolveAdminQuery({
     userId: req.authUser!.id,
     queryId: req.params.id,
+    ipAddress: req.ip,
+    userAgent: req.get("user-agent")
+  });
+  sendSuccess(res, { query });
+});
+
+export const escalateAdminQueryHandler = asyncHandler(async (req, res) => {
+  const input = escalateQuerySchema.parse(req.body);
+  const query = await escalateAdminQuery({
+    userId: req.authUser!.id,
+    queryId: req.params.id,
+    data: input,
     ipAddress: req.ip,
     userAgent: req.get("user-agent")
   });

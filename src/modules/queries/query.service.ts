@@ -1,4 +1,4 @@
-import { QueryStatus, RegionalAdminStatus, RoleCode, VolunteerStatus } from "@prisma/client";
+﻿import { QueryStatus, RegionalAdminStatus, RoleCode, VolunteerStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
 import { sendEmailBestEffort } from "../../shared/email";
@@ -10,6 +10,7 @@ import type {
   AddQueryMessageInput,
   AssignQueryInput,
   CreateQueryInput,
+  EscalateQueryInput,
   ListQueriesQuery
 } from "./query.validation";
 
@@ -89,7 +90,11 @@ const queryListInclude = {
   },
 };
 
-function categoryMetadataRequires(metadata: unknown, key: "requiresRegion" | "requiresUniversity") {
+// ---------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------
+
+function categoryMetadataRequires(metadata: unknown, key: "requiresRegion" | "requiresOffer") {
   return Boolean(
     metadata &&
       typeof metadata === "object" &&
@@ -101,7 +106,7 @@ function categoryMetadataRequires(metadata: unknown, key: "requiresRegion" | "re
 async function getActiveQueryCategory(queryType: string) {
   const category = await prisma.configOption.findFirst({
     where: {
-      groupKey: "query_category",
+      groupKey: "query_type",
       value: queryType,
       isActive: true,
       deletedAt: null
@@ -109,7 +114,7 @@ async function getActiveQueryCategory(queryType: string) {
   });
 
   if (!category) {
-    throw new ApiError(400, "Query category is invalid or inactive");
+    throw new ApiError(400, "Query type is invalid or inactive");
   }
 
   return category;
@@ -177,6 +182,10 @@ function assertQueryWritable(status: QueryStatus) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Notification helpers
+// ---------------------------------------------------------------------------
+
 async function notifyAdmins(queryId: string) {
   const query = await getQueryOrThrow(queryId);
   const admins = await prisma.user.findMany({
@@ -191,7 +200,7 @@ async function notifyAdmins(queryId: string) {
                 roles: { has: RoleCode.regional_admin },
                 regionalAdminProfile: {
                   regionId: query.regionId,
-                status: RegionalAdminStatus.active,
+                  status: RegionalAdminStatus.active,
                   deletedAt: null
                 }
               }
@@ -211,6 +220,68 @@ async function notifyAdmins(queryId: string) {
       "New Query Raised",
       `${query.student.fullName} raised a new query: <strong>${query.title}</strong><br/><br/>${query.message}`,
       `${env.FRONTEND_URL}/admin/queries/${query.id}`,
+      "View Query"
+    )
+  });
+}
+
+async function notifyRegionalAdmins(
+  queryId: string,
+  regionId: string,
+  subject: string,
+  body: string
+) {
+  const admins = await prisma.user.findMany({
+    where: {
+      deletedAt: null,
+      accountStatus: "active",
+      roles: { has: RoleCode.regional_admin },
+      regionalAdminProfile: {
+        regionId,
+        status: RegionalAdminStatus.active,
+        deletedAt: null
+      }
+    },
+    select: { email: true }
+  });
+
+  if (admins.length === 0) return;
+
+  sendEmailBestEffort({
+    to: admins.map((a) => a.email),
+    subject,
+    text: body,
+    html: emailTemplates.notification(
+      "Regional Admin",
+      subject,
+      body,
+      `${env.FRONTEND_URL}/regional-admin/queries`,
+      "View Queries"
+    )
+  });
+}
+
+async function notifyMasterAdmins(subject: string, body: string, queryId: string) {
+  const admins = await prisma.user.findMany({
+    where: {
+      deletedAt: null,
+      accountStatus: "active",
+      roles: { has: RoleCode.master_admin }
+    },
+    select: { email: true }
+  });
+
+  if (admins.length === 0) return;
+
+  sendEmailBestEffort({
+    to: admins.map((a) => a.email),
+    subject,
+    text: body,
+    html: emailTemplates.notification(
+      "Admin",
+      subject,
+      body,
+      `${env.FRONTEND_URL}/admin/queries/${queryId}`,
       "View Query"
     )
   });
@@ -246,6 +317,10 @@ function notifyStudent(email: string, title: string) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Student actions
+// ---------------------------------------------------------------------------
+
 export async function createQuery(input: {
   userId: string;
   data: CreateQueryInput;
@@ -255,11 +330,28 @@ export async function createQuery(input: {
   const category = await getActiveQueryCategory(input.data.queryType);
   let regionId = input.data.regionId;
   let offerId = input.data.offerId;
+  let autoAssignMentorId: string | null = null;
+  let autoAssignMentorEmail: string | null = null;
 
+  // Offer-letter query type: resolve region + potential mentor from offer
   if (offerId) {
     const offer = await prisma.offer.findFirst({
       where: { id: offerId, studentUserId: input.userId, deletedAt: null },
-      select: { id: true, regionId: true }
+      select: {
+        id: true,
+        regionId: true,
+        mentorId: true,
+        mentor: {
+          select: {
+            id: true,
+            email: true,
+            accountStatus: true,
+            volunteerProfile: {
+              select: { volunteerStatus: true, deletedAt: true }
+            }
+          }
+        }
+      }
     });
 
     if (!offer) {
@@ -268,6 +360,17 @@ export async function createQuery(input: {
 
     regionId = offer.regionId;
     offerId = offer.id;
+
+    // Auto-assign to mentor if the offer already has an approved, active mentor
+    if (
+      offer.mentorId &&
+      offer.mentor?.accountStatus === "active" &&
+      offer.mentor.volunteerProfile?.volunteerStatus === VolunteerStatus.approved &&
+      !offer.mentor.volunteerProfile.deletedAt
+    ) {
+      autoAssignMentorId = offer.mentorId;
+      autoAssignMentorEmail = offer.mentor.email;
+    }
   }
 
   if (regionId) {
@@ -282,11 +385,11 @@ export async function createQuery(input: {
   }
 
   if (categoryMetadataRequires(category.metadata, "requiresRegion") && !regionId) {
-    throw new ApiError(400, "Region is required for this query category");
+    throw new ApiError(400, "Destination country is required for this query type");
   }
 
-  if (categoryMetadataRequires(category.metadata, "requiresUniversity") && !offerId) {
-    throw new ApiError(400, "Offer is required for this query category");
+  if (categoryMetadataRequires(category.metadata, "requiresOffer") && !offerId) {
+    throw new ApiError(400, "An offer letter is required for this query type");
   }
 
   const query = await prisma.$transaction(async (tx) => {
@@ -298,6 +401,9 @@ export async function createQuery(input: {
         message: input.data.message,
         regionId,
         offerId,
+        ...(autoAssignMentorId
+          ? { assignedToUserId: autoAssignMentorId, status: QueryStatus.assigned }
+          : {}),
         deletedAt: null
       }
     });
@@ -319,16 +425,30 @@ export async function createQuery(input: {
     action: "query_created",
     entityType: "query",
     entityId: query.id,
-    metadata: { queryType: input.data.queryType, regionId, offerId },
+    metadata: {
+      queryType: input.data.queryType,
+      regionId,
+      offerId,
+      autoAssigned: Boolean(autoAssignMentorId)
+    },
     ipAddress: input.ipAddress,
     userAgent: input.userAgent
   });
 
-  void notifyAdmins(query.id).catch((error) => {
-    console.error(
-      `Query admin notification failed: ${error instanceof Error ? error.message : "Unknown notification error"}`
-    );
-  });
+  if (autoAssignMentorId && autoAssignMentorEmail) {
+    notifyAssignee(autoAssignMentorEmail, input.data.title);
+    appEmitter.emit(AppEvents.QUERY_ASSIGNED, {
+      assigneeUserId: autoAssignMentorId,
+      queryId: query.id,
+      title: input.data.title
+    });
+  } else {
+    void notifyAdmins(query.id).catch((error) => {
+      console.error(
+        `Query admin notification failed: ${error instanceof Error ? error.message : "Unknown notification error"}`
+      );
+    });
+  }
 
   return getQueryOrThrow(query.id);
 }
@@ -399,6 +519,10 @@ export async function addStudentMessage(input: {
 
   return message;
 }
+
+// ---------------------------------------------------------------------------
+// Admin actions
+// ---------------------------------------------------------------------------
 
 export async function listAdminQueries(userId: string, query: ListQueriesQuery) {
   const scope = await getAdminScope(userId);
@@ -556,6 +680,66 @@ export async function resolveAdminQuery(input: {
   return updatedQuery;
 }
 
+/**
+ * Regional Admin escalates a query to Master Admin.
+ * Posts an escalation remark in the thread and notifies all master admins.
+ */
+export async function escalateAdminQuery(input: {
+  userId: string;
+  queryId: string;
+  data: EscalateQueryInput;
+  ipAddress?: string;
+  userAgent?: string;
+}) {
+  const query = await getAdminQuery(input.userId, input.queryId);
+  assertQueryWritable(query.status);
+
+  const escalationMessage = `[ESCALATED TO ADMIN] ${input.data.remark}`;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.queryMessage.create({
+      data: {
+        queryId: query.id,
+        senderUserId: input.userId,
+        message: escalationMessage,
+        deletedAt: null
+      }
+    });
+
+    // Reset to open so master admin can pick it up
+    await tx.query.update({
+      where: { id: query.id },
+      data: { status: QueryStatus.open, updatedAt: new Date() }
+    });
+  });
+
+  await recordAuditLog({
+    actorUserId: input.userId,
+    action: "query_escalated_to_admin",
+    entityType: "query",
+    entityId: query.id,
+    metadata: { remark: input.data.remark },
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent
+  });
+
+  void notifyMasterAdmins(
+    `Escalated query: ${query.title}`,
+    `A Regional Admin has escalated a query to master admin level.<br/><br/><strong>Query:</strong> ${query.title}<br/><strong>Remark:</strong> ${input.data.remark}`,
+    query.id
+  ).catch((err) => {
+    console.error(
+      `Master admin escalation notification failed: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  });
+
+  return getQueryOrThrow(query.id);
+}
+
+// ---------------------------------------------------------------------------
+// Mentor actions
+// ---------------------------------------------------------------------------
+
 export async function listMentorQueries(userId: string) {
   return prisma.query.findMany({
     where: { assignedToUserId: userId, deletedAt: null },
@@ -675,4 +859,69 @@ export async function resolveMentorQuery(input: {
   notifyStudent(query.student.email, query.title);
 
   return updatedQuery;
+}
+
+/**
+ * Mentor escalates a query to their Regional Admin.
+ * Releases the mentor assignment so it reappears in the admin queue.
+ */
+export async function escalateMentorQuery(input: {
+  userId: string;
+  queryId: string;
+  data: EscalateQueryInput;
+  ipAddress?: string;
+  userAgent?: string;
+}) {
+  const query = await getMentorQuery(input.userId, input.queryId);
+  assertQueryWritable(query.status);
+
+  const escalationMessage = `[ESCALATED TO REGIONAL ADMIN] ${input.data.remark}`;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.queryMessage.create({
+      data: {
+        queryId: query.id,
+        senderUserId: input.userId,
+        message: escalationMessage,
+        deletedAt: null
+      }
+    });
+
+    // Release mentor assignment — query returns to admin open queue
+    await tx.query.update({
+      where: { id: query.id },
+      data: {
+        assignedToUserId: null,
+        assignedByUserId: null,
+        acceptedAt: null,
+        status: QueryStatus.open,
+        updatedAt: new Date()
+      }
+    });
+  });
+
+  await recordAuditLog({
+    actorUserId: input.userId,
+    action: "query_escalated_to_regional_admin",
+    entityType: "query",
+    entityId: query.id,
+    metadata: { remark: input.data.remark },
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent
+  });
+
+  if (query.regionId) {
+    void notifyRegionalAdmins(
+      query.id,
+      query.regionId,
+      `Escalated query: ${query.title}`,
+      `A mentor has escalated a student query to your attention.<br/><br/><strong>Query:</strong> ${query.title}<br/><strong>Remark:</strong> ${input.data.remark}`
+    ).catch((err) => {
+      console.error(
+        `Regional admin escalation notification failed: ${err instanceof Error ? err.message : "Unknown error"}`
+      );
+    });
+  }
+
+  return getQueryOrThrow(query.id);
 }
