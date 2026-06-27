@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { objectIdSchema } from "../../shared/validation";
 
 export const listAnnouncementsQuerySchema = z.object({
   category: z.string().min(1).optional()
@@ -14,9 +15,10 @@ export const listAdminAnnouncementsQuerySchema = z.object({
 
 export const createAnnouncementSchema = z.object({
   title: z.string().min(3).max(180),
-  body: z.string().min(3).max(10000),
+  body: z.string().min(3).max(500000),
   category: z.string().min(1).optional(),
-  isPublished: z.boolean().optional()
+  isPublished: z.boolean().optional(),
+  regionId: objectIdSchema.nullable().optional()
 });
 
 export const updateAnnouncementSchema = createAnnouncementSchema.partial();

@@ -17,7 +17,7 @@ import {
 
 export const listPublishedAnnouncementsHandler = asyncHandler(async (req, res) => {
   const query = listAnnouncementsQuerySchema.parse(req.query);
-  const announcements = await listPublishedAnnouncements(query);
+  const announcements = await listPublishedAnnouncements(query, req.authUser!);
   sendSuccess(res, { announcements });
 });
 

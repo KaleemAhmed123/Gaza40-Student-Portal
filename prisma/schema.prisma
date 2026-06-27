@@ -230,6 +230,7 @@ model Region {
   universities          University[]
   offers                Offer[]
   queries               Query[]
+  announcements         Announcement[]
 
   @@index([isActive])
 }
@@ -417,6 +418,8 @@ model Announcement {
   title           String
   body            String
   category        String?
+  regionId        String?   @db.ObjectId
+  region          Region?   @relation(fields: [regionId], references: [id])
   createdByUserId String    @db.ObjectId
   isPublished     Boolean   @default(false)
   publishedAt     DateTime?
@@ -428,6 +431,7 @@ model Announcement {
   @@index([createdByUserId])
   @@index([isPublished])
   @@index([category])
+  @@index([regionId])
 }
 
 model AppConfig {
