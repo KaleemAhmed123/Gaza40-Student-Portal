@@ -20,6 +20,7 @@ export const registerStudentSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   fullName: z.string().min(1),
+  phone: z.string().min(1),
   hasOfferSelfReported: z.boolean().default(false),
 });
 

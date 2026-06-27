@@ -224,6 +224,7 @@ export async function registerStudent(input: RegisterStudentInput) {
       email: input.email,
       passwordHash,
       fullName: input.fullName,
+      phone: input.phone,
       roles: [RoleCode.student],
       deletedAt: null,
       studentProfile: {
