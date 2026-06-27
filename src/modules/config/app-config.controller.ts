@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import * as appConfigService from "./app-config.service";
 
 // Public configs allowed to be fetched without auth
-const PUBLIC_CONFIG_KEYS = ["homepage_faqs"];
+const PUBLIC_CONFIG_KEYS = ["homepage_faqs", "homepage_metrics", "require_admin_approval_tags"];
 
 export async function getPublicConfigHandler(req: Request, res: Response) {
   try {
