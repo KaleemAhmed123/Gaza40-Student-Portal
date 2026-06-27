@@ -17,7 +17,10 @@ export const addQueryMessageSchema = z.object({
 export const listQueriesQuerySchema = z.object({
   status: z.nativeEnum(QueryStatus).optional(),
   regionId: objectIdSchema.optional(),
-  queryType: z.string().min(1).optional()
+  queryType: z.string().min(1).optional(),
+  universityId: objectIdSchema.optional(),
+  assignedToName: z.string().optional(),
+  title: z.string().optional()
 });
 
 export const assignQuerySchema = z.object({

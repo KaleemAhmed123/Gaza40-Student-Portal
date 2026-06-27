@@ -1,4 +1,4 @@
-﻿import { QueryStatus, RegionalAdminStatus, RoleCode, VolunteerStatus } from "@prisma/client";
+import { QueryStatus, RegionalAdminStatus, RoleCode, VolunteerStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
 import { sendEmailBestEffort } from "../../shared/email";
@@ -533,7 +533,16 @@ export async function listAdminQueries(userId: string, query: ListQueriesQuery) 
       ...(query.status ? { status: query.status } : {}),
       ...(query.queryType ? { queryType: query.queryType } : {}),
       ...(query.regionId ? { regionId: query.regionId } : {}),
-      ...(scope.isMasterAdmin ? {} : { regionId: scope.regionId })
+      ...(scope.isMasterAdmin ? {} : { regionId: scope.regionId }),
+      ...(query.universityId ? { offer: { universityId: query.universityId } } : {}),
+      ...(query.assignedToName
+        ? {
+            assignedTo: {
+              fullName: { contains: query.assignedToName, mode: "insensitive" }
+            }
+          }
+        : {}),
+      ...(query.title ? { title: { contains: query.title, mode: "insensitive" } } : {})
     },
     include: queryListInclude,
     orderBy: { updatedAt: "desc" }
@@ -740,9 +749,14 @@ export async function escalateAdminQuery(input: {
 // Mentor actions
 // ---------------------------------------------------------------------------
 
-export async function listMentorQueries(userId: string) {
+export async function listMentorQueries(userId: string, query?: ListQueriesQuery) {
   return prisma.query.findMany({
-    where: { assignedToUserId: userId, deletedAt: null },
+    where: {
+      assignedToUserId: userId,
+      deletedAt: null,
+      ...(query?.universityId ? { offer: { universityId: query.universityId } } : {}),
+      ...(query?.title ? { title: { contains: query.title, mode: "insensitive" } } : {})
+    },
     include: queryListInclude,
     orderBy: { updatedAt: "desc" }
   });

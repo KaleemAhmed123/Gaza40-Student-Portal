@@ -7,10 +7,11 @@ import {
   listMentorQueries,
   resolveMentorQuery
 } from "./query.service";
-import { addQueryMessageSchema, escalateQuerySchema } from "./query.validation";
+import { addQueryMessageSchema, escalateQuerySchema, listQueriesQuerySchema } from "./query.validation";
 
 export const listMentorQueriesHandler = asyncHandler(async (req, res) => {
-  const queries = await listMentorQueries(req.authUser!.id);
+  const queryInput = listQueriesQuerySchema.partial().parse(req.query);
+  const queries = await listMentorQueries(req.authUser!.id, queryInput);
   sendSuccess(res, { queries });
 });
 
