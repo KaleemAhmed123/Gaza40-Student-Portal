@@ -1,6 +1,7 @@
 import { asyncHandler, sendSuccess } from "../../shared/http";
 import * as chatService from "./chat.service";
 import { z } from "zod";
+import { prisma } from "../../db/prisma";
 
 const createGroupSchema = z.object({
   name: z.string().min(1).max(100),
@@ -113,14 +114,21 @@ export const getAttachmentUrlHandler = asyncHandler(async (req, res) => {
 export const searchUsersHandler = asyncHandler(async (req, res) => {
   const query = req.query.q as string || "";
   const role = req.query.role as string || undefined;
+  const university = req.query.university as string || undefined;
   let regionId = req.query.regionId as string || undefined;
 
   // Enforce regional admin's own region
   if (req.authUser?.roles.includes("regional_admin") && !req.authUser?.roles.includes("master_admin")) {
-    regionId = req.authUser.regionId;
+    // If the regional admin profile is loaded, check its regionId
+    const regionalProfile = await prisma.regionalAdminProfile.findUnique({
+      where: { userId: req.authUser.id }
+    });
+    if (regionalProfile) {
+      regionId = regionalProfile.regionId;
+    }
   }
 
-  const users = await chatService.searchChatUsers(query, role, regionId);
+  const users = await chatService.searchChatUsers(query, role, regionId, university);
   sendSuccess(res, { users });
 });
 
@@ -134,4 +142,20 @@ export const deleteMessageHandler = asyncHandler(async (req, res) => {
   const { id, messageId } = req.params;
   await chatService.deleteMessage(id, messageId, req.authUser!.id);
   sendSuccess(res, { message: "Message deleted successfully" });
+});
+
+export const editMessageHandler = asyncHandler(async (req, res) => {
+  const { id, messageId } = req.params;
+  const { content } = req.body;
+  if (content === undefined || content === null) {
+    throw new Error("Content is required to edit message");
+  }
+
+  const message = await chatService.editMessage(id, messageId, req.authUser!.id, content);
+  sendSuccess(res, { message });
+});
+
+export const getChatShortcutsHandler = asyncHandler(async (req, res) => {
+  const shortcuts = await chatService.getChatShortcuts(req.authUser!.id);
+  sendSuccess(res, { shortcuts });
 });

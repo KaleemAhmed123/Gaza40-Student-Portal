@@ -28,6 +28,16 @@ export async function canDirectChat(initiatorId: string, targetId: string): Prom
   const initRoles = initiator.roles;
   const targetRoles = target.roles;
 
+  const isInitStudent = initRoles.includes("student");
+  const isTargetStudent = targetRoles.includes("student");
+
+  // If student chat is disabled, no direct chats involving students are allowed
+  if (isInitStudent || isTargetStudent) {
+    const { getAppConfig } = require("../config/app-config.service");
+    const enableStudentChat = await getAppConfig("enable_student_chat");
+    if (!enableStudentChat) return false;
+  }
+
   // Master Admin can chat with anyone
   if (initRoles.includes("master_admin") || targetRoles.includes("master_admin")) {
     return true;
@@ -37,8 +47,6 @@ export async function canDirectChat(initiatorId: string, targetId: string): Prom
   const isTargetRegional = targetRoles.includes("regional_admin");
   const isInitMentor = initRoles.includes("mentor");
   const isTargetMentor = targetRoles.includes("mentor");
-  const isInitStudent = initRoles.includes("student");
-  const isTargetStudent = targetRoles.includes("student");
 
   // Regional Admin can chat with any other Regional Admin
   if (isInitRegional && isTargetRegional) return true;
@@ -101,7 +109,35 @@ export async function canAddMemberToGroup(
 
   if (!adder || !target) return false;
 
-  // Master Admin can add anyone
+  const isTargetStudent = target.roles.includes("student");
+
+  // If student chatting config is disabled, students cannot be added by anyone.
+  // If config is enabled, only master_admin or regional_admin (within their region) can add students.
+  if (isTargetStudent) {
+    const { getAppConfig } = require("../config/app-config.service");
+    const enableStudentChat = await getAppConfig("enable_student_chat");
+    if (!enableStudentChat) return false;
+
+    if (adder.roles.includes("master_admin")) return true;
+
+    if (adder.roles.includes("regional_admin")) {
+      const adderRegion = adder.regionalAdminProfile?.regionId;
+      if (!adderRegion) return false;
+
+      const studentHasOfferInRegion = await prisma.offer.findFirst({
+        where: {
+          studentUserId: targetId,
+          regionId: adderRegion,
+          deletedAt: null
+        }
+      });
+      return !!studentHasOfferInRegion;
+    }
+
+    return false;
+  }
+
+  // Master Admin can add anyone else
   if (adder.roles.includes("master_admin")) return true;
 
   // Must be Group Admin to add
@@ -115,7 +151,7 @@ export async function canAddMemberToGroup(
   if (adder.roles.includes("regional_admin")) {
     const isTargetMentor = target.roles.includes("mentor");
     
-    // Can add other Regional Admins or Students freely
+    // Can add other Regional Admins freely (Students are handled above)
     if (!isTargetMentor) return true;
 
     // If target is Mentor, must be same region

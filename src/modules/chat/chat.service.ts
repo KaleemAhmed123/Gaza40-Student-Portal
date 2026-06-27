@@ -3,6 +3,73 @@ import { ApiError } from "../../shared/http";
 import { canDirectChat, canCreateGroup, canAddMemberToGroup } from "./chat.permissions";
 import { appEmitter, AppEvents } from "../../shared/events";
 
+async function enrichConversationMembers(conversations: any[]) {
+  // Batch fetch regions for volunteer profile preferredRegionIds to avoid N+1 queries
+  const preferredRegionIds = new Set<string>();
+  for (const conv of conversations) {
+    if (!conv?.members) continue;
+    for (const member of conv.members) {
+      const regId = member.user?.volunteerProfile?.preferredRegionId;
+      if (regId) {
+        preferredRegionIds.add(regId);
+      }
+    }
+  }
+
+  const regionsMap = new Map<string, { id: string; name: string }>();
+  if (preferredRegionIds.size > 0) {
+    const regions = await prisma.region.findMany({
+      where: { id: { in: Array.from(preferredRegionIds) } },
+      select: { id: true, name: true }
+    });
+    for (const r of regions) {
+      regionsMap.set(r.id, r);
+    }
+  }
+
+  for (const conv of conversations) {
+    if (!conv?.members) continue;
+    for (const member of conv.members) {
+      if (!member.user) continue;
+
+      let resolvedRegion: { id: string; name: string } | null = null;
+
+      // 1. Regional Admin Profile
+      if (member.user.regionalAdminProfile?.region) {
+        resolvedRegion = {
+          id: member.user.regionalAdminProfile.region.id,
+          name: member.user.regionalAdminProfile.region.name
+        };
+      }
+      // 2. Student Offers (using approved university name instead of region name as requested!)
+      else if (member.user.studentOffers && member.user.studentOffers[0]) {
+        resolvedRegion = {
+          id: "student_uni",
+          name: member.user.studentOffers[0].universityName
+        };
+      }
+      // 3. Mentor Volunteer Profile
+      else if (member.user.volunteerProfile?.preferredRegionId) {
+        const reg = regionsMap.get(member.user.volunteerProfile.preferredRegionId);
+        if (reg) {
+          resolvedRegion = reg;
+        }
+      }
+
+      // Attach virtual property
+      member.user.region = resolvedRegion;
+    }
+  }
+
+  return conversations;
+}
+
+export async function enrichConversation(conv: any) {
+  if (!conv) return conv;
+  const [enriched] = await enrichConversationMembers([conv]);
+  return enriched;
+}
+
 export async function getConversations(userId: string) {
   // If master_admin, fetch ALL groups + own direct chats
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { roles: true } });
@@ -20,6 +87,11 @@ export async function getConversations(userId: string) {
                 studentProfile: { select: { locationInGaza: true, locationOther: true } },
                 volunteerProfile: { select: { preferredRegionId: true, universityAffiliation: true } },
                 regionalAdminProfile: { select: { regionId: true, region: { select: { name: true, id: true } } } },
+                studentOffers: {
+                  where: { reviewStatus: "approved" },
+                  take: 1,
+                  select: { universityName: true }
+                }
               }
             }
           }
@@ -41,6 +113,11 @@ export async function getConversations(userId: string) {
                 studentProfile: { select: { locationInGaza: true, locationOther: true } },
                 volunteerProfile: { select: { preferredRegionId: true, universityAffiliation: true } },
                 regionalAdminProfile: { select: { regionId: true, region: { select: { name: true, id: true } } } },
+                studentOffers: {
+                  where: { reviewStatus: "approved" },
+                  take: 1,
+                  select: { universityName: true }
+                }
               }
             }
           }
@@ -49,15 +126,17 @@ export async function getConversations(userId: string) {
       orderBy: { lastMessageAt: "desc" }
     });
 
-    return [...adminGroups, ...adminDirects].sort((a, b) => {
+    const combined = [...adminGroups, ...adminDirects].sort((a, b) => {
       const dateA = a.lastMessageAt || a.createdAt;
       const dateB = b.lastMessageAt || b.createdAt;
       return dateB.getTime() - dateA.getTime();
     });
+
+    return enrichConversationMembers(combined);
   }
 
   // Normal user: fetch only where member
-  return prisma.conversation.findMany({
+  const list = await prisma.conversation.findMany({
     where: {
       members: { some: { userId } }
     },
@@ -70,6 +149,11 @@ export async function getConversations(userId: string) {
               studentProfile: { select: { locationInGaza: true, locationOther: true } },
               volunteerProfile: { select: { preferredRegionId: true, universityAffiliation: true } },
               regionalAdminProfile: { select: { regionId: true, region: { select: { name: true, id: true } } } },
+              studentOffers: {
+                where: { reviewStatus: "approved" },
+                take: 1,
+                select: { universityName: true }
+              }
             }
           }
         }
@@ -77,6 +161,8 @@ export async function getConversations(userId: string) {
     },
     orderBy: { lastMessageAt: "desc" }
   });
+
+  return enrichConversationMembers(list);
 }
 
 export async function getOrCreateDirectChat(initiatorId: string, targetId: string) {
@@ -103,6 +189,11 @@ export async function getOrCreateDirectChat(initiatorId: string, targetId: strin
               studentProfile: { select: { locationInGaza: true, locationOther: true } },
               volunteerProfile: { select: { preferredRegionId: true, universityAffiliation: true } },
               regionalAdminProfile: { select: { regionId: true, region: { select: { name: true, id: true } } } },
+              studentOffers: {
+                where: { reviewStatus: "approved" },
+                take: 1,
+                select: { universityName: true }
+              }
             }
           }
         }
@@ -110,10 +201,10 @@ export async function getOrCreateDirectChat(initiatorId: string, targetId: strin
     }
   });
 
-  if (existing) return existing;
+  if (existing) return enrichConversation(existing);
 
   // Create new
-  return prisma.conversation.create({
+  const created = await prisma.conversation.create({
     data: {
       type: "direct",
       createdBy: initiatorId,
@@ -133,16 +224,26 @@ export async function getOrCreateDirectChat(initiatorId: string, targetId: strin
               studentProfile: { select: { locationInGaza: true, locationOther: true } },
               volunteerProfile: { select: { preferredRegionId: true, universityAffiliation: true } },
               regionalAdminProfile: { select: { regionId: true, region: { select: { name: true, id: true } } } },
+              studentOffers: {
+                where: { reviewStatus: "approved" },
+                take: 1,
+                select: { universityName: true }
+              }
             }
           }
         }
       }
     }
   });
+
+  return enrichConversation(created);
 }
 
 export async function createGroupChat(creatorId: string, name: string, initialMemberIds: string[]) {
-  const creator = await prisma.user.findUnique({ where: { id: creatorId } });
+  const creator = await prisma.user.findUnique({
+    where: { id: creatorId },
+    include: { regionalAdminProfile: true }
+  });
   if (!creator || !canCreateGroup(creator.roles)) {
     throw new ApiError(403, "You do not have permission to create groups.");
   }
@@ -150,11 +251,48 @@ export async function createGroupChat(creatorId: string, name: string, initialMe
   // Filter out creator from initial members to avoid duplicate membership rows
   const uniqueMemberIds = Array.from(new Set(initialMemberIds.filter(id => id !== creatorId)));
 
-  // Validate all additions
-  for (const targetId of uniqueMemberIds) {
-    // In creation flow, we temporarily bypass the "conversationId" check by allowing if they could normally add
-    // We trust the frontend array if the creator is an admin/regional admin. 
-    // For safety, we can re-use the logic by mocking the group admin role check.
+  // Validate student additions in creation flow
+  const { getAppConfig } = require("../config/app-config.service");
+  const enableStudentChat = await getAppConfig("enable_student_chat");
+
+  const members = await prisma.user.findMany({
+    where: { id: { in: uniqueMemberIds } },
+    select: { id: true, roles: true }
+  });
+
+  for (const targetUser of members) {
+    if (targetUser.roles.includes("student")) {
+      if (!enableStudentChat) {
+        throw new ApiError(400, "Student chat feature is disabled");
+      }
+      
+      if (creator.roles.includes("master_admin")) {
+        // Master Admin can add any student
+        continue;
+      }
+      
+      if (creator.roles.includes("regional_admin")) {
+        // Regional Admin creator: check student's region matches
+        const regionalRegionId = creator.regionalAdminProfile?.regionId;
+        if (!regionalRegionId) {
+          throw new ApiError(403, "Regional admin has no assigned region");
+        }
+        
+        const studentHasOfferInRegion = await prisma.offer.findFirst({
+          where: {
+            studentUserId: targetUser.id,
+            regionId: regionalRegionId,
+            deletedAt: null
+          }
+        });
+        
+        if (!studentHasOfferInRegion) {
+          throw new ApiError(403, "You can only add students from your own region to groups");
+        }
+      } else {
+        throw new ApiError(403, "Only admins can add students to groups");
+      }
+    }
   }
 
   const conversation = await prisma.conversation.create({
@@ -316,20 +454,68 @@ let cachedRegionMap: Record<string, {id: string, name: string}> | null = null;
 let lastRegionFetchTime = 0;
 const REGION_CACHE_TTL = 1000 * 60 * 60; // 1 hour
 
-export const searchChatUsers = async (query: string, role?: string, regionId?: string, limit = 20) => {
+export const searchChatUsers = async (query: string, role?: string, regionId?: string, university?: string, limit = 20) => {
   const where: any = {};
   
   if (query) {
     where.OR = [
       { fullName: { startsWith: query, mode: "insensitive" } },
-      { email: { startsWith: query, mode: "insensitive" } },
-      { volunteerProfile: { is: { universityAffiliation: { startsWith: query, mode: "insensitive" } } } },
-      { studentProfile: { is: { locationOther: { startsWith: query, mode: "insensitive" } } } }
+      { email: { startsWith: query, mode: "insensitive" } }
     ];
   }
   
   if (role) {
     where.roles = { has: role };
+  }
+
+  // Filter out students if student chat is disabled
+  const { getAppConfig } = require("../config/app-config.service");
+  const enableStudentChat = await getAppConfig("enable_student_chat");
+  if (!enableStudentChat) {
+    if (role === "student") {
+      return [];
+    }
+    where.NOT = { roles: { has: "student" } };
+  }
+
+  // Optimize DB queries: Apply Region filter in the DB where clause
+  if (regionId) {
+    const regionFilter = {
+      OR: [
+        { volunteerProfile: { is: { preferredRegionId: regionId } } },
+        { regionalAdminProfile: { is: { regionId: regionId } } }
+      ]
+    };
+    if (where.OR) {
+      where.AND = [
+        { OR: where.OR },
+        regionFilter
+      ];
+      delete where.OR;
+    } else {
+      where.OR = regionFilter.OR;
+    }
+  }
+
+  // Optimize DB queries: Apply University filter in the DB where clause
+  if (university) {
+    const uniFilter = {
+      OR: [
+        { volunteerProfile: { is: { universityAffiliation: { contains: university, mode: "insensitive" } } } },
+        { studentProfile: { is: { bachelorUniGaza: { contains: university, mode: "insensitive" } } } }
+      ]
+    };
+    if (where.AND) {
+      where.AND.push(uniFilter);
+    } else if (where.OR) {
+      where.AND = [
+        { OR: where.OR },
+        uniFilter
+      ];
+      delete where.OR;
+    } else {
+      where.OR = uniFilter.OR;
+    }
   }
 
   const users = await prisma.user.findMany({
@@ -382,10 +568,6 @@ export const searchChatUsers = async (query: string, role?: string, regionId?: s
       _regionalAdminRegionId: regionalAdminRegionId
     };
   });
-
-  if (regionId) {
-    mapped = mapped.filter(u => u._preferredRegionId === regionId || u._regionalAdminRegionId === regionId);
-  }
 
   return mapped;
 }
@@ -457,4 +639,98 @@ export async function deleteMessage(conversationId: string, messageId: string, u
   });
 
   return { success: true };
+}
+
+export async function editMessage(conversationId: string, messageId: string, userId: string, content: string) {
+  const message = await prisma.chatMessage.findUnique({ where: { id: messageId } });
+  if (!message || message.conversationId !== conversationId) throw new ApiError(404, "Message not found");
+
+  if (message.senderUserId !== userId) {
+    throw new ApiError(403, "You do not have permission to edit this message");
+  }
+
+  const updatedMessage = await prisma.chatMessage.update({
+    where: { id: messageId },
+    data: { content, updatedAt: new Date() },
+    include: {
+      sender: {
+        select: {
+          id: true, fullName: true, roles: true,
+          studentProfile: { select: { locationInGaza: true, locationOther: true } },
+          volunteerProfile: { select: { preferredRegionId: true, universityAffiliation: true } },
+          regionalAdminProfile: { select: { regionId: true, region: { select: { name: true, id: true } } } },
+        }
+      }
+    }
+  });
+
+  import("./chat.socket").then(({ emitToConversation }) => {
+    emitToConversation(conversationId, "message_updated", updatedMessage);
+  });
+
+  return updatedMessage;
+}
+
+export async function getChatShortcuts(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      roles: true,
+      volunteerProfile: { select: { preferredRegionId: true } }
+    }
+  });
+
+  if (!user) return [];
+
+  // 1. If Regional Admin, return all active Master Admins
+  if (user.roles.includes("regional_admin")) {
+    const admins = await prisma.user.findMany({
+      where: {
+        roles: { has: "master_admin" },
+        accountStatus: "active"
+      },
+      select: { id: true, fullName: true, email: true }
+    });
+    return admins.map(admin => ({
+      id: admin.id,
+      label: `Admin: ${admin.fullName}`,
+      role: "master_admin"
+    }));
+  }
+
+  // 2. If Mentor, return all active Regional Admins for their preferred region
+  if (user.roles.includes("mentor")) {
+    const preferredRegionId = user.volunteerProfile?.preferredRegionId;
+    if (!preferredRegionId) {
+      // If mentor is regionless, return all active regional admins
+      const regionalAdmins = await prisma.user.findMany({
+        where: {
+          roles: { has: "regional_admin" },
+          accountStatus: "active"
+        },
+        select: { id: true, fullName: true, email: true }
+      });
+      return regionalAdmins.map(ra => ({
+        id: ra.id,
+        label: `Regional Admin: ${ra.fullName}`,
+        role: "regional_admin"
+      }));
+    }
+
+    const regionalAdmins = await prisma.user.findMany({
+      where: {
+        roles: { has: "regional_admin" },
+        accountStatus: "active",
+        regionalAdminProfile: { is: { regionId: preferredRegionId } }
+      },
+      select: { id: true, fullName: true, email: true }
+    });
+    return regionalAdmins.map(ra => ({
+      id: ra.id,
+      label: `Regional Admin: ${ra.fullName}`,
+      role: "regional_admin"
+    }));
+  }
+
+  return [];
 }
