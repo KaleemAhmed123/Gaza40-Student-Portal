@@ -105,16 +105,21 @@ appEmitter.on(AppEvents.OFFER_SUBMITTED, async (payload: { studentUserId: string
           }
         ]
       },
-      select: { id: true }
+      select: { id: true, roles: true }
     });
 
     admins.forEach(admin => {
+      const isRegionalAdmin = admin.roles.includes("regional_admin") && !admin.roles.includes("master_admin");
+      const link = isRegionalAdmin
+        ? `/regional-admin/offer-reviews?offerId=${payload.offerId}`
+        : `/admin/offers?offerId=${payload.offerId}`;
+
       safelyDispatchNotification({
         userId: admin.id,
         type: "admin_offer_submitted",
         title: "New Offer Submitted",
         body: `${payload.studentName} has submitted a new offer for review.`,
-        link: "/admin/offer-reviews" // Adjust this if regional admin uses a different route, but standardizing to the main view is fine.
+        link: link
       });
     });
   } catch (e) {
@@ -128,7 +133,7 @@ appEmitter.on(AppEvents.OFFER_STATUS_UPDATED, (payload: { studentUserId: string,
     type: "offer_status_updated",
     title: "Offer Status Updated",
     body: `Your offer status has been updated to: ${payload.status}.`,
-    link: `/student/offers/${payload.offerId}`,
+    link: `/student/offers?offerId=${payload.offerId}`,
   });
 });
 
@@ -138,7 +143,7 @@ appEmitter.on(AppEvents.OFFER_MENTOR_ASSIGNED, (payload: { mentorUserId: string,
     type: "mentor_assigned",
     title: "New Student Assigned",
     body: `You have been assigned to mentor ${payload.studentName} for their offer.`,
-    link: `/mentor/offers/${payload.offerId}`,
+    link: `/mentor/offers?offerId=${payload.offerId}`,
   });
 });
 
@@ -146,42 +151,98 @@ appEmitter.on(AppEvents.OFFER_MENTOR_ASSIGNED, (payload: { mentorUserId: string,
 // Announcements
 // ---------------------------------------------------------------------------
 
-appEmitter.on(AppEvents.ANNOUNCEMENT_CREATED, (payload: { title: string, targetUserIds: string[] }) => {
+appEmitter.on(AppEvents.ANNOUNCEMENT_CREATED, async (payload: { title: string, targetUserIds: string[] }) => {
   // To avoid spamming thousands of socket emits simultaneously, 
   // you might want a specialized broadcast logic, but for simplicity we iterate.
-  payload.targetUserIds.forEach(userId => {
-    safelyDispatchNotification({
-      userId,
-      type: "new_announcement",
-      title: "New Announcement",
-      body: payload.title,
-      link: "/student/announcements", // Could be different per role, but they usually land in common place
+  try {
+    const users = await prisma.user.findMany({
+      where: { id: { in: payload.targetUserIds } },
+      select: { id: true, roles: true }
     });
-  });
+
+    users.forEach(user => {
+      let link = "/student/announcements";
+      if (user.roles.includes("master_admin")) {
+        link = "/admin/announcements";
+      } else if (user.roles.includes("regional_admin")) {
+        link = "/regional-admin/announcements";
+      } else if (user.roles.includes("mentor")) {
+        link = "/mentor/announcements";
+      }
+
+      safelyDispatchNotification({
+        userId: user.id,
+        type: "new_announcement",
+        title: "New Announcement",
+        body: payload.title,
+        link: link
+      });
+    });
+  } catch (e) {
+    console.error("[Notification Listener] Failed to notify users for announcements:", e);
+  }
 });
 
 // ---------------------------------------------------------------------------
 // Queries
 // ---------------------------------------------------------------------------
 
-appEmitter.on(AppEvents.QUERY_REPLIED, (payload: { targetUserId: string, queryId: string, title: string }) => {
-  safelyDispatchNotification({
-    userId: payload.targetUserId,
-    type: "query_replied",
-    title: "New Reply to your Query",
-    body: `You have a new reply regarding: ${payload.title}`,
-    link: `/student/queries/${payload.queryId}`, // Again, link might differ by role
-  });
+appEmitter.on(AppEvents.QUERY_REPLIED, async (payload: { targetUserId: string, queryId: string, title: string }) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: payload.targetUserId },
+      select: { roles: true }
+    });
+
+    let link = `/student/queries?queryId=${payload.queryId}`;
+    if (user) {
+      if (user.roles.includes("master_admin")) {
+        link = `/admin/queries?queryId=${payload.queryId}`;
+      } else if (user.roles.includes("regional_admin")) {
+        link = `/regional-admin/queries?queryId=${payload.queryId}`;
+      } else if (user.roles.includes("mentor")) {
+        link = `/mentor/queries?queryId=${payload.queryId}`;
+      }
+    }
+
+    safelyDispatchNotification({
+      userId: payload.targetUserId,
+      type: "query_replied",
+      title: "New Reply to your Query",
+      body: `You have a new reply regarding: ${payload.title}`,
+      link: link,
+    });
+  } catch (e) {
+    console.error("[Notification Listener] Failed to notify for query reply:", e);
+  }
 });
 
-appEmitter.on(AppEvents.QUERY_ASSIGNED, (payload: { assigneeUserId: string, queryId: string, title: string }) => {
-  safelyDispatchNotification({
-    userId: payload.assigneeUserId,
-    type: "query_assigned",
-    title: "Query Assigned to You",
-    body: `You have been assigned to handle a query: ${payload.title}`,
-    link: `/mentor/queries/${payload.queryId}`, 
-  });
+appEmitter.on(AppEvents.QUERY_ASSIGNED, async (payload: { assigneeUserId: string, queryId: string, title: string }) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: payload.assigneeUserId },
+      select: { roles: true }
+    });
+
+    let link = `/mentor/queries?queryId=${payload.queryId}`;
+    if (user) {
+      if (user.roles.includes("master_admin")) {
+        link = `/admin/queries?queryId=${payload.queryId}`;
+      } else if (user.roles.includes("regional_admin")) {
+        link = `/regional-admin/queries?queryId=${payload.queryId}`;
+      }
+    }
+
+    safelyDispatchNotification({
+      userId: payload.assigneeUserId,
+      type: "query_assigned",
+      title: "Query Assigned to You",
+      body: `You have been assigned to handle a query: ${payload.title}`,
+      link: link, 
+    });
+  } catch (e) {
+    console.error("[Notification Listener] Failed to notify for query assignment:", e);
+  }
 });
 
 // ---------------------------------------------------------------------------

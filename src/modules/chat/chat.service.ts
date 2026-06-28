@@ -482,8 +482,14 @@ export const searchChatUsers = async (query: string, role?: string, regionId?: s
   if (regionId) {
     const regionFilter = {
       OR: [
-        { volunteerProfile: { is: { preferredRegionId: regionId } } },
-        { regionalAdminProfile: { is: { regionId: regionId } } }
+        {
+          AND: [
+            { roles: { has: "mentor" } },
+            { volunteerProfile: { is: { preferredRegionId: regionId } } }
+          ]
+        },
+        { roles: { has: "regional_admin" } },
+        { roles: { has: "master_admin" } }
       ]
     };
     if (where.OR) {

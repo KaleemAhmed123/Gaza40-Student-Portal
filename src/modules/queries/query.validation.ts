@@ -20,7 +20,10 @@ export const listQueriesQuerySchema = z.object({
   queryType: z.string().min(1).optional(),
   universityId: objectIdSchema.optional(),
   assignedToName: z.string().optional(),
-  title: z.string().optional()
+  title: z.string().optional(),
+  isEscalated: z.enum(["true", "false"])
+    .optional()
+    .transform((value) => (value === undefined ? undefined : value === "true"))
 });
 
 export const assignQuerySchema = z.object({

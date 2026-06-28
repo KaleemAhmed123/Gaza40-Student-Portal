@@ -18,7 +18,9 @@ export const createAnnouncementSchema = z.object({
   body: z.string().min(3).max(500000),
   category: z.string().min(1).optional(),
   isPublished: z.boolean().optional(),
-  regionId: objectIdSchema.nullable().optional()
+  regionId: objectIdSchema.nullable().optional(),
+  showApplyButton: z.boolean().optional(),
+  applyLink: z.string().max(2000).nullable().optional()
 });
 
 export const updateAnnouncementSchema = createAnnouncementSchema.partial();

@@ -34,8 +34,10 @@ export const mentorVisibleDocumentTypes = new Set<DocumentType>([
   DocumentType.english_proficiency
 ]);
 
-// Document types that regional admins can access (excludes passport and national_id)
+// Document types that regional admins can access
 export const regionalAdminVisibleProfileDocumentTypes = new Set<DocumentType>([
+  DocumentType.national_id,
+  DocumentType.passport,
   DocumentType.moi_letter,
   DocumentType.consent_form,
   DocumentType.signature,

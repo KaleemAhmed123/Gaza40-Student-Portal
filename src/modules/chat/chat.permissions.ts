@@ -54,7 +54,7 @@ export async function canDirectChat(initiatorId: string, targetId: string): Prom
   // Mentor to Mentor is strictly prohibited
   if (isInitMentor && isTargetMentor) return false;
 
-  // Regional Admin <-> Mentor (must be same region, or mentor is region-less)
+  // Regional Admin <-> Mentor (must be same region)
   if ((isInitRegional && isTargetMentor) || (isInitMentor && isTargetRegional)) {
     const regional = isInitRegional ? initiator : target;
     const mentor = isInitMentor ? initiator : target;
@@ -62,10 +62,7 @@ export async function canDirectChat(initiatorId: string, targetId: string): Prom
     const regionalRegionId = regional.regionalAdminProfile?.regionId;
     const mentorRegionId = mentor.volunteerProfile?.preferredRegionId;
 
-    if (!regionalRegionId) return false;
-    
-    // As per discussion: region-less mentors can be chatted by any regional admin
-    if (!mentorRegionId) return true;
+    if (!regionalRegionId || !mentorRegionId) return false;
     
     return regionalRegionId === mentorRegionId;
   }

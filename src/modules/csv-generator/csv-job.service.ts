@@ -69,6 +69,9 @@ function validatePermissions(body: GenerateCsvBody, scope: CsvScope): void {
     if (!["students", "mentors", "regional_admins"].includes(dataset)) {
       throw new ApiError(403, "Regional Admin can only generate student, mentor, or regional admin CSV");
     }
+    if (filters.regionId && filters.regionId !== scope.regionId) {
+      throw new ApiError(403, "Regional Admin can only export data for their assigned region");
+    }
     return;
   }
 

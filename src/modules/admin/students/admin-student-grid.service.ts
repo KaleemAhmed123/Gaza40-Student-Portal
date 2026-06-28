@@ -174,7 +174,29 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
   }
 
   const where = buildMasterWhere(query);
-  const [students, total, summaryStudents] = await Promise.all([
+  const profileWhere: Prisma.StudentProfileWhereInput = {
+    deletedAt: null,
+    ...(query.profileStatus ? { profileStatus: query.profileStatus } : {}),
+    ...(query.passportStatus ? { passportStatus: query.passportStatus } : {}),
+    ...(query.locationInGaza ? { locationInGaza: query.locationInGaza } : {}),
+    ...(query.hasVerifiedOffer === undefined ? {} : { hasVerifiedOffer: query.hasVerifiedOffer }),
+    ...(query.consentSigned === undefined ? {} : { consentSigned: query.consentSigned }),
+    user: {
+      deletedAt: null,
+      roles: { has: RoleCode.student },
+      ...buildSearchWhere(query.search)
+    }
+  };
+
+  const [
+    students,
+    total,
+    byProfileStatus,
+    byPassportStatus,
+    byLocationInGaza,
+    consentCounts,
+    verifiedCounts
+  ] = await Promise.all([
     prisma.user.findMany({
       where,
       select: {
@@ -225,23 +247,32 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
       take
     }),
     prisma.user.count({ where }),
-    prisma.user.findMany({
-      where,
-      select: { id: true }
+    prisma.studentProfile.groupBy({
+      by: ["profileStatus"],
+      where: profileWhere,
+      _count: true
+    }),
+    prisma.studentProfile.groupBy({
+      by: ["passportStatus"],
+      where: profileWhere,
+      _count: true
+    }),
+    prisma.studentProfile.groupBy({
+      by: ["locationInGaza"],
+      where: profileWhere,
+      _count: true
+    }),
+    prisma.studentProfile.groupBy({
+      by: ["consentSigned"],
+      where: profileWhere,
+      _count: true
+    }),
+    prisma.studentProfile.groupBy({
+      by: ["hasVerifiedOffer"],
+      where: profileWhere,
+      _count: true
     })
   ]);
-
-  const userIds = summaryStudents.map((u) => u.id);
-  const summaryProfiles = await prisma.studentProfile.findMany({
-    where: { userId: { in: userIds } },
-    select: {
-      profileStatus: true,
-      passportStatus: true,
-      locationInGaza: true,
-      consentSigned: true,
-      hasVerifiedOffer: true
-    }
-  });
 
   const summary = {
     total,
@@ -252,12 +283,20 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
     hasVerifiedOffer: { true: 0, false: 0 }
   };
 
-  for (const profile of summaryProfiles) {
-    addCount(summary.byProfileStatus, profile.profileStatus);
-    addCount(summary.byPassportStatus, profile.passportStatus);
-    addCount(summary.byLocationInGaza, profile.locationInGaza);
-    summary.consentSigned[String(Boolean(profile.consentSigned)) as "true" | "false"] += 1;
-    summary.hasVerifiedOffer[String(Boolean(profile.hasVerifiedOffer)) as "true" | "false"] += 1;
+  for (const item of byProfileStatus) {
+    if (item.profileStatus) summary.byProfileStatus[item.profileStatus] = item._count;
+  }
+  for (const item of byPassportStatus) {
+    if (item.passportStatus) summary.byPassportStatus[item.passportStatus] = item._count;
+  }
+  for (const item of byLocationInGaza) {
+    if (item.locationInGaza) summary.byLocationInGaza[item.locationInGaza] = item._count;
+  }
+  for (const item of consentCounts) {
+    summary.consentSigned[String(item.consentSigned) as "true" | "false"] = item._count;
+  }
+  for (const item of verifiedCounts) {
+    summary.hasVerifiedOffer[String(item.hasVerifiedOffer) as "true" | "false"] = item._count;
   }
 
   return {
@@ -287,6 +326,10 @@ export async function streamAdminStudentsCsv(input: {
   userAgent?: string;
 }) {
   const scope = await getAdminScope(input.userId);
+  if (scope.role === "regional_admin" && input.query.regionId && input.query.regionId !== scope.regionId) {
+    throw new ApiError(403, "You do not have permission to export students from this region");
+  }
+
   const where =
     scope.role === "regional_admin"
       ? buildRegionalWhere(input.query, scope.regionId)
@@ -466,15 +509,26 @@ export async function getAdminStudentDetails(userId: string, studentId: string) 
       studentProfile: {
         include: {
           documents: {
-            where: { status: "active", deletedAt: null }
+            where: {
+              status: "active",
+              deletedAt: null,
+              documentType: { in: ["passport", "national_id", "moi_letter", "consent_form", "signature", "english_proficiency"] }
+            }
           }
         }
       },
       documents: {
-        where: { status: "active", deletedAt: null }
+        where: {
+          status: "active",
+          deletedAt: null,
+          documentType: { in: ["passport", "national_id", "moi_letter", "consent_form", "signature", "english_proficiency"] }
+        }
       },
       studentOffers: {
-        where: { deletedAt: null },
+        where: {
+          deletedAt: null,
+          ...(scope.role === "regional_admin" ? { regionId: scope.regionId } : {})
+        },
         include: {
           region: true,
           university: true,
@@ -495,7 +549,10 @@ export async function getAdminStudentDetails(userId: string, studentId: string) 
         orderBy: { createdAt: "desc" }
       },
       studentQueries: {
-        where: { deletedAt: null },
+        where: {
+          deletedAt: null,
+          ...(scope.role === "regional_admin" ? { regionId: scope.regionId } : {})
+        },
         include: {
           region: true,
           assignedTo: { select: { id: true, fullName: true, email: true } },

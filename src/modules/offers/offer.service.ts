@@ -506,6 +506,26 @@ export async function submitMyOffer(input: {
     throw new ApiError(409, "Offer cannot be submitted in its current status");
   }
 
+  if (offer.reviewStatus === OfferReviewStatus.changes_requested && offer.reviewedAt) {
+    const reviewedTime = new Date(offer.reviewedAt).getTime();
+    
+    // Find the latest document creation time
+    const maxDocCreatedAt = offer.documents.reduce((max, doc) => {
+      const docTime = new Date(doc.createdAt).getTime();
+      return docTime > max ? docTime : max;
+    }, 0);
+
+    const hasOfferChanges = new Date(offer.updatedAt).getTime() > reviewedTime + 1000;
+    const hasDocChanges = maxDocCreatedAt > reviewedTime + 1000;
+
+    if (!hasOfferChanges && !hasDocChanges) {
+      throw new ApiError(
+        400,
+        "No changes detected. Please modify the offer details or upload/replace a document before resubmitting."
+      );
+    }
+  }
+
   const hasOfferLetter = offer.documents.some(
     (document) => document.documentType === DocumentType.offer_letter
   );
@@ -1206,9 +1226,7 @@ export async function getMentorStudentDetails(mentorId: string, studentId: strin
             where: {
               status: "active",
               deletedAt: null,
-              NOT: {
-                documentType: { in: ["passport", "national_id"] }
-              }
+              documentType: { in: ["moi_letter", "consent_form", "english_proficiency"] }
             }
           }
         }
@@ -1217,9 +1235,7 @@ export async function getMentorStudentDetails(mentorId: string, studentId: strin
         where: {
           status: "active",
           deletedAt: null,
-          NOT: {
-            documentType: { in: ["passport", "national_id"] }
-          }
+          documentType: { in: ["moi_letter", "consent_form", "english_proficiency"] }
         }
       },
       studentQueries: {

@@ -378,6 +378,7 @@ model Query {
   assignedByUserId String?        @db.ObjectId
   acceptedAt       DateTime?
   resolvedAt       DateTime?
+  isEscalated      Boolean        @default(false)
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   deletedAt        DateTime?
@@ -394,6 +395,7 @@ model Query {
   @@index([assignedToUserId])
   @@index([status])
   @@index([queryType])
+  @@index([isEscalated])
   @@map("Alert")
 }
 
@@ -422,6 +424,8 @@ model Announcement {
   region          Region?   @relation(fields: [regionId], references: [id])
   createdByUserId String    @db.ObjectId
   isPublished     Boolean   @default(false)
+  showApplyButton Boolean   @default(false)
+  applyLink       String?
   publishedAt     DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt

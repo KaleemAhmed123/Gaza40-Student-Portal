@@ -278,17 +278,20 @@ export async function createAnnouncement(input: {
   await validateAnnouncementLimits(input.data.body);
 
   const isPublished = input.data.isPublished ?? false;
-  const announcement = await prisma.announcement.create({
-    data: {
-      title: input.data.title,
-      body: input.data.body,
-      category: input.data.category,
-      regionId: input.data.regionId || null,
-      createdByUserId: input.user.id,
-      isPublished,
-      publishedAt: isPublished ? new Date() : undefined,
-      deletedAt: null
-    },
+  const createPayload: any = {
+    title: input.data.title,
+    body: input.data.body,
+    category: input.data.category,
+    regionId: input.data.regionId || null,
+    createdByUserId: input.user.id,
+    isPublished,
+    publishedAt: isPublished ? new Date() : undefined,
+    showApplyButton: (input.data as any).showApplyButton ?? false,
+    applyLink: (input.data as any).applyLink || null,
+    deletedAt: null
+  };
+  const announcement = await (prisma.announcement as any).create({
+    data: createPayload,
     include: announcementInclude
   });
 
@@ -337,16 +340,19 @@ export async function updateAnnouncement(input: {
   const publishNow = input.data.isPublished === true && !announcement.isPublished;
   const unpublishNow = input.data.isPublished === false;
 
-  const updatedAnnouncement = await prisma.announcement.update({
+  const updatePayload: any = {
+    title: input.data.title,
+    body: input.data.body,
+    category: input.data.category,
+    regionId: input.data.regionId !== undefined ? (input.data.regionId || null) : undefined,
+    isPublished: input.data.isPublished,
+    publishedAt: publishNow ? new Date() : unpublishNow ? null : undefined,
+    showApplyButton: (input.data as any).showApplyButton,
+    applyLink: (input.data as any).applyLink
+  };
+  const updatedAnnouncement = await (prisma.announcement as any).update({
     where: { id: announcement.id },
-    data: {
-      title: input.data.title,
-      body: input.data.body,
-      category: input.data.category,
-      regionId: input.data.regionId !== undefined ? (input.data.regionId || null) : undefined,
-      isPublished: input.data.isPublished,
-      publishedAt: publishNow ? new Date() : unpublishNow ? null : undefined
-    },
+    data: updatePayload,
     include: announcementInclude
   });
 

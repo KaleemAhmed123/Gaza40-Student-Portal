@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import path from "path";
+import fs from "fs";
 import { env } from "../config/env";
 
 export type EmailInput = {
@@ -46,6 +47,14 @@ export async function sendEmailBestEffort(input: EmailInput) {
     }
 
     const logoPath = path.join(process.cwd(), "LOGO.png");
+    const attachments = [];
+    if (fs.existsSync(logoPath)) {
+      attachments.push({
+        filename: "LOGO.png",
+        path: logoPath,
+        cid: "gaza40logo"
+      });
+    }
 
     await transporter.sendMail({
       from: env.EMAIL_FROM,
@@ -53,13 +62,7 @@ export async function sendEmailBestEffort(input: EmailInput) {
       subject: input.subject,
       text: input.text,
       html: input.html,
-      attachments: [
-        {
-          filename: "LOGO.png",
-          path: logoPath,
-          cid: "gaza40logo"
-        }
-      ]
+      attachments
     });
 
     console.info("Email notification sent via SMTP");
