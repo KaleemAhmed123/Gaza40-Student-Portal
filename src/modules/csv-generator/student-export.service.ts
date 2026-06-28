@@ -1,5 +1,5 @@
 import { prisma } from "../../db/prisma";
-import { toCsv } from "../../shared/csv";
+import { formatCsvRow } from "../../shared/csv";
 import { generateCsvDocToken } from "../documents/csv-doc-token";
 import { calculateOfferFinancialSummary, parseFinancialRules } from "../offers/offer-financial";
 import { STUDENT_COLUMNS, DATASET_COLUMNS } from "./csv-column-definitions";
@@ -8,6 +8,9 @@ import type { CsvScope } from "./csv-query-builder";
 import { buildStudentWhere } from "./csv-query-builder";
 import type { StudentCsvBody } from "./csv-generator.validation";
 import { env } from "../../config/env";
+import * as fs from "fs/promises";
+import * as path from "path";
+import * as os from "os";
 
 const BATCH_SIZE = 1000;
 
@@ -24,22 +27,32 @@ export async function runStudentExport(
   body: StudentCsvBody,
   scope: CsvScope,
   onProgress: (processed: number) => Promise<void>
-): Promise<{ buffer: Buffer; rowCount: number; fileSizeBytes: number }> {
+): Promise<{ filePath: string; rowCount: number; fileSizeBytes: number }> {
 
-  // Fetch AppConfig financial rules once — reused for every offer row
   const appConfig = await prisma.appConfig.findUnique({ where: { key: "offer_financial_rules" } });
   const financialRules = appConfig ? parseFinancialRules(appConfig.value) : null;
 
   const apiBase = env.FRONTEND_URL.replace(/\/$/, "");
   const where = buildStudentWhere(body, scope);
-  const rows: Record<string, unknown>[] = [];
+  
+  const tempFilePath = path.join(os.tmpdir(), `csv-student-${job.id}.csv`);
+  const fileHandle = await fs.open(tempFilePath, 'w');
+  
+  // Write headers
+  const headers = job.columns.map((col: string) => STUDENT_COLUMNS[col]?.label ?? col);
+  await fileHandle.write(formatCsvRow(Object.fromEntries(headers.map((h: string) => [h, h])), headers) + "\n");
+  
   let cursor: string | undefined;
   let processed = 0;
+  let rowCount = 0;
 
   while (true) {
-    // Re-fetch cancelRequested on each batch to cooperatively support cancellation
     const jobCheck = await prisma.csvJob.findUnique({ where: { id: job.id }, select: { cancelRequested: true } });
-    if (jobCheck?.cancelRequested) break;
+    if (jobCheck?.cancelRequested) {
+      await fileHandle.close();
+      await fs.unlink(tempFilePath).catch(() => {});
+      throw new Error("Cancelled");
+    }
 
     const students = await prisma.user.findMany({
       where,
@@ -113,6 +126,8 @@ export async function runStudentExport(
     if (students.length === 0) break;
     cursor = students[students.length - 1].id;
 
+    let chunk = "";
+
     for (const student of students) {
       const sp = student.studentProfile;
 
@@ -141,7 +156,9 @@ export async function runStudentExport(
       const offers = student.studentOffers;
 
       if (offers.length === 0) {
-        rows.push(pickColumns({ ...studentBase, country: "", university: "", offerId: "", courseName: "", courseField: "", courseLevel: "", offerType: "", durationYears: "", programmeStartDate: "", tuitionFeePerYear: "", hasScholarship: "", scholarshipName: "", scholarshipAmountPerYear: "", scholarshipCoversLivingCost: "", privateFundingAmount: "", privateFundingSource: "", financialGap: "", financialGapExists: "", offerStatus: "", approvedOffer: "", activeOffer: "", scholarshipExists: "", offerLetterUrl: "", scholarshipLetterUrl: "", offerCreatedAt: "" }, job.columns));
+        const row = pickColumns({ ...studentBase, country: "", university: "", offerId: "", courseName: "", courseField: "", courseLevel: "", offerType: "", durationYears: "", programmeStartDate: "", tuitionFeePerYear: "", hasScholarship: "", scholarshipName: "", scholarshipAmountPerYear: "", scholarshipCoversLivingCost: "", privateFundingAmount: "", privateFundingSource: "", financialGap: "", financialGapExists: "", offerStatus: "", approvedOffer: "", activeOffer: "", scholarshipExists: "", offerLetterUrl: "", scholarshipLetterUrl: "", offerCreatedAt: "" }, job.columns);
+        chunk += formatCsvRow(row, headers) + "\n";
+        rowCount++;
         continue;
       }
 
@@ -179,7 +196,7 @@ export async function runStudentExport(
         const offerLetterUrl       = offerLetterDoc       ? `${apiBase}/api/documents/${offerLetterDoc.id}/signed-download?token=${generateCsvDocToken(offerLetterDoc.id)}`             : "";
         const scholarshipLetterUrl = scholarshipLetterDoc ? `${apiBase}/api/documents/${scholarshipLetterDoc.id}/signed-download?token=${generateCsvDocToken(scholarshipLetterDoc.id)}` : "";
 
-        rows.push(pickColumns({
+        const row = pickColumns({
           ...studentBase,
           country:                    offer.region.name,
           university:                 offer.universityName,
@@ -206,17 +223,21 @@ export async function runStudentExport(
           offerLetterUrl,
           scholarshipLetterUrl,
           offerCreatedAt:             offer.createdAt,
-        }, job.columns));
+        }, job.columns);
+        chunk += formatCsvRow(row, headers) + "\n";
+        rowCount++;
       }
     }
-
+    
+    await fileHandle.write(chunk);
     processed += students.length;
     await onProgress(processed);
 
     if (students.length < BATCH_SIZE) break;
   }
 
-  const csvString = toCsv(rows);
-  const buffer = Buffer.from(csvString, "utf-8");
-  return { buffer, rowCount: rows.length, fileSizeBytes: buffer.length };
+  const stat = await fileHandle.stat();
+  await fileHandle.close();
+  
+  return { filePath: tempFilePath, rowCount, fileSizeBytes: stat.size };
 }

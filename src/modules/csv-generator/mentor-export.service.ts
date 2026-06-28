@@ -1,5 +1,5 @@
 import { prisma } from "../../db/prisma";
-import { toCsv } from "../../shared/csv";
+import { formatCsvRow } from "../../shared/csv";
 import { generateCsvDocToken } from "../documents/csv-doc-token";
 import { calculateOfferFinancialSummary, parseFinancialRules } from "../offers/offer-financial";
 import { MENTOR_COLUMNS } from "./csv-column-definitions";
@@ -8,6 +8,9 @@ import type { CsvScope } from "./csv-query-builder";
 import { buildMentorOfferWhere } from "./csv-query-builder";
 import type { MentorCsvBody } from "./csv-generator.validation";
 import { env } from "../../config/env";
+import * as fs from "fs/promises";
+import * as path from "path";
+import * as os from "os";
 
 const BATCH_SIZE = 1000;
 
@@ -24,20 +27,31 @@ export async function runMentorExport(
   body: MentorCsvBody,
   scope: CsvScope,
   onProgress: (processed: number) => Promise<void>
-): Promise<{ buffer: Buffer; rowCount: number; fileSizeBytes: number }> {
+): Promise<{ filePath: string; rowCount: number; fileSizeBytes: number }> {
 
   const appConfig = await prisma.appConfig.findUnique({ where: { key: "offer_financial_rules" } });
   const financialRules = appConfig ? parseFinancialRules(appConfig.value) : null;
 
   const apiBase = env.FRONTEND_URL.replace(/\/$/, "");
   const where = buildMentorOfferWhere(body, scope);
-  const rows: Record<string, unknown>[] = [];
+  
+  const tempFilePath = path.join(os.tmpdir(), `csv-mentor-${job.id}.csv`);
+  const fileHandle = await fs.open(tempFilePath, 'w');
+  
+  const headers = job.columns.map((col: string) => MENTOR_COLUMNS[col]?.label ?? col);
+  await fileHandle.write(formatCsvRow(Object.fromEntries(headers.map((h: string) => [h, h])), headers) + "\n");
+  
   let cursor: string | undefined;
   let processed = 0;
+  let rowCount = 0;
 
   while (true) {
     const jobCheck = await prisma.csvJob.findUnique({ where: { id: job.id }, select: { cancelRequested: true } });
-    if (jobCheck?.cancelRequested) break;
+    if (jobCheck?.cancelRequested) {
+      await fileHandle.close();
+      await fs.unlink(tempFilePath).catch(() => {});
+      throw new Error("Cancelled");
+    }
 
     const offers = await prisma.offer.findMany({
       where,
@@ -81,6 +95,8 @@ export async function runMentorExport(
     if (offers.length === 0) break;
     cursor = offers[offers.length - 1].id;
 
+    let chunk = "";
+
     for (const offer of offers) {
       const mentor = offer.mentor!;
       const vp     = mentor.volunteerProfile;
@@ -116,7 +132,7 @@ export async function runMentorExport(
         ? `${apiBase}/api/documents/${offerLetterDoc.id}/signed-download?token=${generateCsvDocToken(offerLetterDoc.id)}`
         : "";
 
-      rows.push(pickColumns({
+      const row = pickColumns({
         mentorId:                mentor.id,
         mentorFullName:          mentor.fullName,
         email:                   mentor.email,
@@ -141,16 +157,20 @@ export async function runMentorExport(
         activeOffer,
         offerLetterUrl,
         offerCreatedAt:          offer.createdAt,
-      }, job.columns));
+      }, job.columns);
+      chunk += formatCsvRow(row, headers) + "\n";
+      rowCount++;
     }
 
+    await fileHandle.write(chunk);
     processed += offers.length;
     await onProgress(processed);
 
     if (offers.length < BATCH_SIZE) break;
   }
 
-  const csvString = toCsv(rows);
-  const buffer = Buffer.from(csvString, "utf-8");
-  return { buffer, rowCount: rows.length, fileSizeBytes: buffer.length };
+  const stat = await fileHandle.stat();
+  await fileHandle.close();
+  
+  return { filePath: tempFilePath, rowCount, fileSizeBytes: stat.size };
 }
