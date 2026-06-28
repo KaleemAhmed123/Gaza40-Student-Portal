@@ -1,4 +1,4 @@
-function formatCsvValue(value: unknown) {
+export function formatCsvValue(value: unknown) {
   if (value === null || value === undefined) {
     return "";
   }
@@ -9,6 +9,10 @@ function formatCsvValue(value: unknown) {
 
   const text = Array.isArray(value) ? value.join("|") : String(value);
   return `"${text.replace(/"/g, '""')}"`;
+}
+
+export function formatCsvRow(row: Record<string, unknown>, headers: string[]) {
+  return headers.map((header) => formatCsvValue(row[header])).join(",");
 }
 
 export function toCsv(rows: Array<Record<string, unknown>>) {

@@ -23,21 +23,30 @@ export function buildStudentWhere(
     ? { createdAt: { gte: body.dateRangeFrom, lte: body.dateRangeTo } }
     : {};
 
+  const hasOfferFilters =
+    Boolean(regionId) ||
+    Boolean(filters.universityId) ||
+    Boolean(filters.scholarshipName) ||
+    filters.approvedOffer !== undefined ||
+    Object.keys(offerDateFilter).length > 0;
+
   return {
     deletedAt: null,
     roles: { has: RoleCode.student },
     ...dateFilter,
     studentProfile: { is: { deletedAt: null } },
-    studentOffers: {
-      some: {
-        deletedAt: null,
-        ...(regionId ? { regionId } : {}),
-        ...(filters.universityId ? { universityId: filters.universityId } : {}),
-        ...(filters.scholarshipName ? { scholarshipName: { contains: filters.scholarshipName, mode: "insensitive" } } : {}),
-        ...(filters.approvedOffer !== undefined ? { reviewStatus: filters.approvedOffer ? "approved" : { not: "approved" as const } } : {}),
-        ...offerDateFilter,
+    ...(hasOfferFilters ? {
+      studentOffers: {
+        some: {
+          deletedAt: null,
+          ...(regionId ? { regionId } : {}),
+          ...(filters.universityId ? { universityId: filters.universityId } : {}),
+          ...(filters.scholarshipName ? { scholarshipName: { contains: filters.scholarshipName, mode: "insensitive" } } : {}),
+          ...(filters.approvedOffer !== undefined ? { reviewStatus: filters.approvedOffer ? "approved" : { not: "approved" as const } } : {}),
+          ...offerDateFilter,
+        },
       },
-    },
+    } : {}),
   };
 }
 

@@ -2,7 +2,7 @@ import { prisma } from "../../db/prisma";
 import { ApiError } from "../../shared/http";
 import { recordAuditLog } from "../../shared/audit";
 import { RoleCode, CsvJobStatus, type CsvJob } from "@prisma/client";
-import { uploadCsv, getCsvDownloadUrl, deleteCsvFromStorage } from "./csv-storage.service";
+import { uploadCsvFile, getCsvDownloadUrl, deleteCsvFromStorage } from "./csv-storage.service";
 import { runStudentExport } from "./student-export.service";
 import { runMentorExport } from "./mentor-export.service";
 import { runRegionalAdminExport } from "./regional-admin-export.service";
@@ -155,7 +155,7 @@ export async function runCsvJob(jobId: string): Promise<void> {
 
     const onProgress = makeProgressCallback(jobId);
 
-    let result: { buffer: Buffer; rowCount: number; fileSizeBytes: number };
+    let result: { filePath: string; rowCount: number; fileSizeBytes: number };
 
     if (job.dataset === "students") {
       result = await runStudentExport(job, body as any, scope, onProgress);
@@ -168,11 +168,18 @@ export async function runCsvJob(jobId: string): Promise<void> {
     // Check cancellation one final time before uploading
     const finalCheck = await prisma.csvJob.findUnique({ where: { id: jobId }, select: { cancelRequested: true } });
     if (finalCheck?.cancelRequested) {
+      const fs = await import("fs/promises");
+      await fs.unlink(result.filePath).catch(() => {});
       await prisma.csvJob.update({ where: { id: jobId }, data: { status: CsvJobStatus.failed, errorMessage: "Cancelled" } });
       return;
     }
 
-    const { key, bucket } = await uploadCsv(result.buffer, jobId, job.dataset);
+    const { key, bucket } = await uploadCsvFile(result.filePath, jobId, job.dataset);
+    
+    // Clean up temporary file
+    const fs = await import("fs/promises");
+    await fs.unlink(result.filePath).catch(() => {});
+    
     const expiresAt = new Date(Date.now() + env.CSV_SIGNED_URL_TTL_DAYS * 24 * 60 * 60 * 1000);
 
     await prisma.csvJob.update({
@@ -223,6 +230,18 @@ export async function createCsvJob(
   const duplicate = await findDuplicateJob(userId, body);
   if (duplicate) {
     return { jobId: duplicate.id, status: duplicate.status, duplicate: true };
+  }
+
+  // Active jobs limit to prevent DoS
+  const activeJobsCount = await prisma.csvJob.count({
+    where: {
+      requestedByUserId: userId,
+      status: { in: [CsvJobStatus.pending, CsvJobStatus.generating] },
+    },
+  });
+
+  if (activeJobsCount >= 2) {
+    throw new ApiError(429, "You already have two CSV exports in progress. Please wait for them to finish.");
   }
 
   const filterSummary = await buildFilterSummary(body);

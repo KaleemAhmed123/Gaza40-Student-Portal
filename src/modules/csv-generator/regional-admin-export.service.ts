@@ -1,5 +1,5 @@
 import { prisma } from "../../db/prisma";
-import { toCsv } from "../../shared/csv";
+import { formatCsvRow } from "../../shared/csv";
 import { generateCsvDocToken } from "../documents/csv-doc-token";
 import { calculateOfferFinancialSummary, parseFinancialRules } from "../offers/offer-financial";
 import { REGIONAL_ADMIN_COLUMNS } from "./csv-column-definitions";
@@ -7,6 +7,9 @@ import type { CsvJob } from "@prisma/client";
 import type { CsvScope } from "./csv-query-builder";
 import type { RegionalAdminCsvBody } from "./csv-generator.validation";
 import { env } from "../../config/env";
+import * as fs from "fs/promises";
+import * as path from "path";
+import * as os from "os";
 
 const BATCH_SIZE = 1000;
 
@@ -23,7 +26,7 @@ export async function runRegionalAdminExport(
   body: RegionalAdminCsvBody,
   scope: CsvScope,
   onProgress: (processed: number) => Promise<void>
-): Promise<{ buffer: Buffer; rowCount: number; fileSizeBytes: number }> {
+): Promise<{ filePath: string; rowCount: number; fileSizeBytes: number }> {
 
   const appConfig = await prisma.appConfig.findUnique({ where: { key: "offer_financial_rules" } });
   const financialRules = appConfig ? parseFinancialRules(appConfig.value) : null;
@@ -31,26 +34,21 @@ export async function runRegionalAdminExport(
   const apiBase = env.FRONTEND_URL.replace(/\/$/, "");
   const filters = body.filters ?? {};
 
-  // For a Regional Admin requester: always scoped to own region only
   const regionId = scope.role === "regional_admin" ? scope.regionId : filters.regionId;
 
-  // Date range on offer creation
   const offerDateFilter = body.dateRangeField === "offerCreatedAt"
     ? { createdAt: { gte: body.dateRangeFrom, lte: body.dateRangeTo } }
     : {};
 
-  // Date range on admin signup
   const adminDateFilter = body.dateRangeField === "regionalAdminSignupDate"
     ? { createdAt: { gte: body.dateRangeFrom, lte: body.dateRangeTo } }
     : {};
 
-  // Resolve all regional admins we're interested in
   const adminProfiles = await prisma.regionalAdminProfile.findMany({
     where: {
       deletedAt: null,
       status: "active",
       ...(regionId ? { regionId } : {}),
-      // For a RA requester, only their own record
       ...(scope.role === "regional_admin" ? { userId: (job as any).requestedByUserId } : {}),
       ...(Object.keys(adminDateFilter).length ? { user: adminDateFilter } : {}),
     },
@@ -63,18 +61,26 @@ export async function runRegionalAdminExport(
     },
   });
 
-  const rows: Record<string, unknown>[] = [];
+  const tempFilePath = path.join(os.tmpdir(), `csv-regional-${job.id}.csv`);
+  const fileHandle = await fs.open(tempFilePath, 'w');
+  
+  const headers = job.columns.map((col: string) => REGIONAL_ADMIN_COLUMNS[col]?.label ?? col);
+  await fileHandle.write(formatCsvRow(Object.fromEntries(headers.map((h: string) => [h, h])), headers) + "\n");
+
   let totalProcessed = 0;
+  let rowCount = 0;
 
   for (const adminProfile of adminProfiles) {
     const admin = adminProfile.user;
-
-    // Paginate over offers in this admin's region
     let cursor: string | undefined;
 
     while (true) {
       const jobCheck = await prisma.csvJob.findUnique({ where: { id: job.id }, select: { cancelRequested: true } });
-      if (jobCheck?.cancelRequested) goto_cleanup: { break; }
+      if (jobCheck?.cancelRequested) {
+        await fileHandle.close();
+        await fs.unlink(tempFilePath).catch(() => {});
+        throw new Error("Cancelled");
+      }
 
       const offers = await prisma.offer.findMany({
         where: {
@@ -113,6 +119,8 @@ export async function runRegionalAdminExport(
 
       if (offers.length === 0) break;
       cursor = offers[offers.length - 1].id;
+      
+      let chunk = "";
 
       for (const offer of offers) {
         let financialGap = 0;
@@ -139,7 +147,6 @@ export async function runRegionalAdminExport(
           }
         }
 
-        // Apply financial gap filter if requested
         if (filters.financialGapExists !== undefined && filters.financialGapExists !== financialGapExists) continue;
         if (filters.financialGapMin !== undefined && financialGap < filters.financialGapMin) continue;
         if (filters.financialGapMax !== undefined && financialGap > filters.financialGapMax) continue;
@@ -153,7 +160,7 @@ export async function runRegionalAdminExport(
           ? `${apiBase}/api/documents/${offerLetterDoc.id}/signed-download?token=${generateCsvDocToken(offerLetterDoc.id)}`
           : "";
 
-        rows.push(pickColumns({
+        const row = pickColumns({
           adminId:                 admin.id,
           adminFullName:           admin.fullName,
           adminEmail:              admin.email,
@@ -179,9 +186,12 @@ export async function runRegionalAdminExport(
           activeOffer,
           offerLetterUrl,
           offerCreatedAt:          offer.createdAt,
-        }, job.columns));
+        }, job.columns);
+        chunk += formatCsvRow(row, headers) + "\n";
+        rowCount++;
       }
 
+      await fileHandle.write(chunk);
       totalProcessed += offers.length;
       await onProgress(totalProcessed);
 
@@ -189,7 +199,8 @@ export async function runRegionalAdminExport(
     }
   }
 
-  const csvString = toCsv(rows);
-  const buffer = Buffer.from(csvString, "utf-8");
-  return { buffer, rowCount: rows.length, fileSizeBytes: buffer.length };
+  const stat = await fileHandle.stat();
+  await fileHandle.close();
+  
+  return { filePath: tempFilePath, rowCount, fileSizeBytes: stat.size };
 }

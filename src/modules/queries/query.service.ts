@@ -718,7 +718,13 @@ export async function escalateAdminQuery(input: {
     // Reset to open so master admin can pick it up
     await tx.query.update({
       where: { id: query.id },
-      data: { status: QueryStatus.open, updatedAt: new Date() }
+      data: { 
+        assignedToUserId: null,
+        assignedByUserId: null,
+        acceptedAt: null,
+        status: QueryStatus.open, 
+        updatedAt: new Date() 
+      }
     });
   });
 
