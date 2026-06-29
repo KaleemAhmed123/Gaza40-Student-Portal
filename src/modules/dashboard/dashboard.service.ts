@@ -325,6 +325,7 @@ export async function getAdminDashboard(userId: string) {
               : undefined,
             scholarshipCoversLivingCost: offer.scholarshipCoversLivingCost,
             privateFundingAmount: decimalToNumber(offer.privateFundingAmount),
+            privateFundingInterval: (offer as any).privateFundingInterval,
             livingCostLocationKey: offer.livingCostLocationKey,
             livingCostForVisa: offer.livingCostForVisa ? decimalToNumber(offer.livingCostForVisa) : undefined,
             boardingFees: offer.boardingFees ? decimalToNumber(offer.boardingFees) : undefined

@@ -300,6 +300,7 @@ model Offer {
   scholarshipCoversLivingCost Boolean           @default(false)
   privateFundingAmount        Float             @default(0)
   privateFundingSource        String?
+  privateFundingInterval      String            @default("annual")
   livingCostLocationKey       String?
   livingCostForVisa           Float?
   boardingFees                Float?

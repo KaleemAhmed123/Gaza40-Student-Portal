@@ -114,6 +114,7 @@ function offerSnapshot(offer: Record<string, unknown>): Prisma.JsonObject {
     scholarshipCoversLivingCost: snapshotValue(offer.scholarshipCoversLivingCost),
     privateFundingAmount: snapshotValue(offer.privateFundingAmount),
     privateFundingSource: snapshotValue(offer.privateFundingSource),
+    privateFundingInterval: snapshotValue(offer.privateFundingInterval),
     livingCostLocationKey: snapshotValue(offer.livingCostLocationKey),
     livingCostForVisa: snapshotValue(offer.livingCostForVisa),
     boardingFees: snapshotValue(offer.boardingFees)
@@ -183,6 +184,7 @@ async function formatOffer(
       : undefined,
     scholarshipCoversLivingCost: offer.scholarshipCoversLivingCost,
     privateFundingAmount: decimalToNumber(offer.privateFundingAmount),
+    privateFundingInterval: offer.privateFundingInterval,
     livingCostLocationKey: offer.livingCostLocationKey,
     livingCostForVisa: offer.livingCostForVisa ? decimalToNumber(offer.livingCostForVisa) : undefined,
     boardingFees: offer.boardingFees ? decimalToNumber(offer.boardingFees) : undefined
@@ -209,6 +211,7 @@ function toOfferData(input: OfferInput) {
     scholarshipCoversLivingCost: input.scholarshipCoversLivingCost,
     privateFundingAmount: input.privateFundingAmount,
     privateFundingSource: input.privateFundingSource,
+    privateFundingInterval: input.privateFundingInterval,
     livingCostLocationKey: input.livingCostLocationKey,
     livingCostForVisa: input.livingCostForVisa,
     boardingFees: input.boardingFees

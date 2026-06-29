@@ -136,6 +136,7 @@ export async function runRegionalAdminExport(
               scholarshipAmountPerYear:   offer.scholarshipAmountPerYear ?? undefined,
               scholarshipCoversLivingCost:offer.scholarshipCoversLivingCost,
               privateFundingAmount:       offer.privateFundingAmount,
+              privateFundingInterval:     (offer as any).privateFundingInterval,
               livingCostLocationKey:      offer.livingCostLocationKey,
               livingCostForVisa:          offer.livingCostForVisa ?? undefined,
               boardingFees:               offer.boardingFees ?? undefined,

@@ -21,6 +21,7 @@ export const offerInputSchema = z.object({
   scholarshipCoversLivingCost: z.boolean().default(false),
   privateFundingAmount: z.coerce.number().nonnegative().default(0),
   privateFundingSource: z.string().min(1).optional(),
+  privateFundingInterval: z.enum(["annual", "one_time"]).default("annual"),
   livingCostLocationKey: z.string().min(1).optional(),
   livingCostForVisa: z.coerce.number().nonnegative().optional(),
   boardingFees: z.coerce.number().nonnegative().optional()

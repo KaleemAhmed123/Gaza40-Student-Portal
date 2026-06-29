@@ -17,6 +17,7 @@ export type OfferFinancialInput = {
   scholarshipAmountPerYear?: number | null;
   scholarshipCoversLivingCost: boolean;
   privateFundingAmount: number;
+  privateFundingInterval?: string | null;
   livingCostLocationKey?: string | null;
   livingCostForVisa?: number | null;
   boardingFees?: number | null;
@@ -61,7 +62,10 @@ export function calculateOfferFinancialSummary(
   input: OfferFinancialInput
 ): OfferFinancialSummary {
   const scholarshipAmount = input.scholarshipAmountPerYear ?? 0;
-  const availableFundsForYear = scholarshipAmount + input.privateFundingAmount;
+  const privateFundingAnnual = input.privateFundingInterval === "one_time"
+    ? (input.privateFundingAmount / Math.max(1, input.durationYears))
+    : input.privateFundingAmount;
+  const availableFundsForYear = scholarshipAmount + privateFundingAnnual;
   const tuitionFeePerYearGap = Math.max(input.tuitionFeePerYear - availableFundsForYear, 0);
   const tuitionFeePerYearCovered = tuitionFeePerYearGap === 0;
   const completeYears = Math.floor(input.durationYears);
@@ -84,7 +88,7 @@ export function calculateOfferFinancialSummary(
       throw new ApiError(400, "Invalid living cost location for UK offer");
     }
 
-    estimatedLivingOrBoardingCost = locationRule.amountPerYear * completeYears;
+    estimatedLivingOrBoardingCost = locationRule.amountPerYear;
     livingCostSource = "configured_country_rule";
   } else if (input.countryName.toLowerCase() !== "uk") {
     estimatedLivingOrBoardingCost = input.livingCostForVisa ?? 0;
