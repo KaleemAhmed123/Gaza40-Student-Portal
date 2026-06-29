@@ -5,7 +5,8 @@ import { getDownloadableDocument, saveDocument } from "./document.service";
 import { verifyCsvDocToken } from "./csv-doc-token";
 import { prisma } from "../../db/prisma";
 import { ApiError } from "../../shared/http";
-import { getSignedStorageUrl } from "../../shared/storage";
+import { getSignedStorageUrl, getObjectStreamFromStorage } from "../../shared/storage";
+import { pipeline } from "stream";
 
 export const uploadDocumentHandler = asyncHandler(async (req, res) => {
   if (!req.file) {
@@ -41,8 +42,8 @@ export const uploadDocumentHandler = asyncHandler(async (req, res) => {
   }
 });
 
-export const downloadDocumentHandler = asyncHandler(async (req, res) => {
-  const { document, absolutePath, url } = await getDownloadableDocument({
+export const downloadDocumentHandler = asyncHandler(async (req, res, next) => {
+  const { document, absolutePath } = await getDownloadableDocument({
     documentId: req.params.id,
     requesterUserId: req.authUser!.id,
     ipAddress: req.ip,
@@ -50,25 +51,57 @@ export const downloadDocumentHandler = asyncHandler(async (req, res) => {
     download: true
   });
 
-  if (url) {
-    res.redirect(url);
-    return;
+  if (document.storageBucket !== "local_private") {
+    const s3Stream = await getObjectStreamFromStorage(document.storageKey, document.storageBucket);
+    if (s3Stream) {
+      res.setHeader("Content-Type", document.mimeType);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${encodeURIComponent(document.originalFilename)}"`
+      );
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      pipeline(s3Stream, res, (err) => {
+        if (err) {
+          console.error("Pipeline download error:", err);
+          if (!res.headersSent) {
+            next(err);
+          }
+        }
+      });
+      return;
+    }
   }
 
   res.download(absolutePath!, document.originalFilename);
 });
 
-export const previewDocumentHandler = asyncHandler(async (req, res) => {
-  const { document, absolutePath, url } = await getDownloadableDocument({
+export const previewDocumentHandler = asyncHandler(async (req, res, next) => {
+  const { document, absolutePath } = await getDownloadableDocument({
     documentId: req.params.id,
     requesterUserId: req.authUser!.id,
     ipAddress: req.ip,
     userAgent: req.get("user-agent")
   });
 
-  if (url) {
-    res.redirect(url);
-    return;
+  if (document.storageBucket !== "local_private") {
+    const s3Stream = await getObjectStreamFromStorage(document.storageKey, document.storageBucket);
+    if (s3Stream) {
+      res.setHeader("Content-Type", document.mimeType);
+      res.setHeader(
+        "Content-Disposition",
+        `inline; filename="${encodeURIComponent(document.originalFilename)}"`
+      );
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      pipeline(s3Stream, res, (err) => {
+        if (err) {
+          console.error("Pipeline preview error:", err);
+          if (!res.headersSent) {
+            next(err);
+          }
+        }
+      });
+      return;
+    }
   }
 
   // Set headers for inline browser rendering

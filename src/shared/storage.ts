@@ -2,6 +2,7 @@ import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } fro
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../config/env";
 import { randomUUID } from "crypto";
+import { Readable } from "stream";
 
 let s3Client: S3Client | null = null;
 
@@ -134,5 +135,34 @@ export async function deleteFromStorage(key: string, bucket?: string): Promise<b
   } catch (error) {
     console.error("Failed to delete file from R2:", error);
     return false;
+  }
+}
+
+export async function getObjectStreamFromStorage(
+  key: string,
+  bucket?: string
+): Promise<Readable | null> {
+  const targetBucket = bucket || env.R2_BUCKET_NAME || "gaza40-documents";
+  if (!s3Client || targetBucket === "local_private") {
+    return null;
+  }
+
+  const command = new GetObjectCommand({
+    Bucket: targetBucket,
+    Key: key,
+  });
+
+  try {
+    const response = await s3Client.send(command);
+    const body = response.Body;
+    if (!body) return null;
+
+    if (body instanceof Readable || (typeof body === "object" && "pipe" in body && typeof (body as any).pipe === "function")) {
+      return body as Readable;
+    }
+    return null;
+  } catch (error) {
+    console.error("Failed to get stream from storage:", error);
+    return null;
   }
 }
