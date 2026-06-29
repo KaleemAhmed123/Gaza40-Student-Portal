@@ -374,6 +374,7 @@ export async function updateVolunteerAssignment(input: {
       data: {
         ...(input.data.volunteerStatus ? { volunteerStatus: input.data.volunteerStatus } : {}),
         ...(input.data.preferredRegionId ? { preferredRegionId: input.data.preferredRegionId } : {}),
+        ...(input.data.notes !== undefined ? { reviewNotes: input.data.notes } : {}),
         ...(input.data.volunteerStatus
           ? {
               reviewedBy: input.actorUserId,

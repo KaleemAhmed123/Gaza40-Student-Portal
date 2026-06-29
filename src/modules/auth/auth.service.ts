@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import { AuthTokenType, Prisma, RoleCode } from "@prisma/client";
+import { AuthTokenType, Prisma, RoleCode, VolunteerStatus } from "@prisma/client";
 import { env } from "../../config/env";
 import { prisma } from "../../db/prisma";
 import { recordAuditLog } from "../../shared/audit";
@@ -53,7 +53,8 @@ const volunteerAuthProfileSelect = {
   id: true,
   volunteerStatus: true,
   universityAffiliation: true,
-  preferredRegionId: true
+  preferredRegionId: true,
+  reviewNotes: true
 } satisfies Prisma.VolunteerProfileSelect;
 
 const regionalAdminAuthProfileSelect = {
@@ -449,4 +450,27 @@ export async function verifyEmail(input: VerifyEmailInput) {
   });
 
   return { verified: true };
+}
+
+export async function updateMyVolunteerProfile(userId: string, universityAffiliation: string) {
+  const profile = await prisma.volunteerProfile.findUnique({
+    where: { userId }
+  });
+
+  if (!profile) {
+    throw new ApiError(404, "Volunteer profile not found");
+  }
+
+  await prisma.volunteerProfile.update({
+    where: { userId },
+    data: {
+      universityAffiliation,
+      volunteerStatus: VolunteerStatus.pending,
+      reviewNotes: null,
+      reviewedAt: null,
+      reviewedBy: null
+    }
+  });
+
+  return buildAuthUser(userId);
 }

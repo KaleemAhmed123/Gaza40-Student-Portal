@@ -10,7 +10,8 @@ import {
   registerVolunteerHandler,
   resetPasswordHandler,
   sendVerificationEmailHandler,
-  verifyEmailHandler
+  verifyEmailHandler,
+  updateMyVolunteerProfileHandler
 } from "./auth.controller";
 
 export const authRouter = Router();
@@ -21,6 +22,7 @@ authRouter.post("/login", loginHandler);
 authRouter.post("/logout", logoutHandler);
 authRouter.get("/refresh", refreshTokenHandler);
 authRouter.get("/me", requireAuth, meHandler);
+authRouter.patch("/me/volunteer-profile", requireAuth, updateMyVolunteerProfileHandler);
 authRouter.post("/forgot-password", forgotPasswordHandler);
 authRouter.post("/reset-password", resetPasswordHandler);
 authRouter.post("/send-verification-email", requireAuth, sendVerificationEmailHandler);

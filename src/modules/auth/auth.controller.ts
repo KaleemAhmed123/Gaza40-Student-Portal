@@ -19,7 +19,8 @@ import {
   registerVolunteer,
   resetPassword,
   sendVerificationEmail,
-  verifyEmail
+  verifyEmail,
+  updateMyVolunteerProfile
 } from "./auth.service";
 
 const accessCookieName = "accessToken";
@@ -145,4 +146,16 @@ export const verifyEmailHandler = asyncHandler(async (req, res) => {
   const input = verifyEmailSchema.parse(req.body);
   const result = await verifyEmail(input);
   sendSuccess(res, result);
+});
+
+export const updateMyVolunteerProfileHandler = asyncHandler(async (req, res) => {
+  const { universityAffiliation } = req.body;
+  if (!universityAffiliation) {
+    throw new ApiError(400, "universityAffiliation is required");
+  }
+
+  const authUser = await updateMyVolunteerProfile(req.authUser!.id, universityAffiliation);
+  setAccessCookie(res, signAccessToken(authUser));
+  setRefreshCookie(res, signRefreshToken(authUser));
+  sendSuccess(res, { user: authUser });
 });

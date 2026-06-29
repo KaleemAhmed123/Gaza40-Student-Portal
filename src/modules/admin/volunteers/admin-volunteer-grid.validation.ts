@@ -14,7 +14,8 @@ export const listAdminVolunteersQuerySchema = z.object({
 export const updateVolunteerAssignmentSchema = z.object({
   volunteerStatus: z.nativeEnum(VolunteerStatus).optional(),
   preferredRegionId: objectIdSchema.optional(),
-  mentorEnabled: z.boolean().optional()
+  mentorEnabled: z.boolean().optional(),
+  notes: z.string().optional()
 });
 
 export type ListAdminVolunteersQuery = z.infer<typeof listAdminVolunteersQuerySchema>;
