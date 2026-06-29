@@ -250,6 +250,63 @@ appEmitter.on(AppEvents.QUERY_ASSIGNED, async (payload: { assigneeUserId: string
 // ---------------------------------------------------------------------------
 // Note: Regional Admins are notified about new offers within the OFFER_SUBMITTED listener above.
 
+appEmitter.on(AppEvents.QUERY_ESCALATED, async (payload: { 
+  queryId: string; 
+  title: string; 
+  escalatedTo: "master_admin" | "regional_admin"; 
+  regionId?: string | null; 
+  remark: string; 
+}) => {
+  try {
+    if (payload.escalatedTo === "master_admin") {
+      const masterAdmins = await prisma.user.findMany({
+        where: {
+          deletedAt: null,
+          accountStatus: "active",
+          roles: { has: "master_admin" }
+        },
+        select: { id: true }
+      });
+
+      masterAdmins.forEach(admin => {
+        safelyDispatchNotification({
+          userId: admin.id,
+          type: "query_escalated",
+          title: "Query Escalated to Admin",
+          body: `A query has been escalated to Admin: ${payload.title}`,
+          link: `/admin/queries?queryId=${payload.queryId}`
+        });
+      });
+    } else if (payload.escalatedTo === "regional_admin" && payload.regionId) {
+      const regionalAdmins = await prisma.user.findMany({
+        where: {
+          deletedAt: null,
+          accountStatus: "active",
+          roles: { has: "regional_admin" },
+          regionalAdminProfile: {
+            regionId: payload.regionId,
+            status: "active",
+            deletedAt: null
+          }
+        },
+        select: { id: true }
+      });
+
+      regionalAdmins.forEach(admin => {
+        safelyDispatchNotification({
+          userId: admin.id,
+          type: "query_escalated",
+          title: "Query Escalated to Regional Admin",
+          body: `A query has been escalated to Regional Admin: ${payload.title}`,
+          link: `/regional-admin/queries?queryId=${payload.queryId}`
+        });
+      });
+    }
+  } catch (e) {
+    console.error("[Notification Listener] Failed to notify for query escalation:", e);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Chat
 // ---------------------------------------------------------------------------

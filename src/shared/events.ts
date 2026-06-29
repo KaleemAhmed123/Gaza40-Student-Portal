@@ -26,6 +26,7 @@ export const AppEvents = {
   // Queries
   QUERY_REPLIED: "query.replied",
   QUERY_ASSIGNED: "query.assigned",
+  QUERY_ESCALATED: "query.escalated",
 
   // Chat
   CHAT_GROUP_ADDED: "chat.group_added",

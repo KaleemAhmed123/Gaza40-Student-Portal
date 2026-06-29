@@ -377,6 +377,17 @@ export async function updateMyOffer(input: {
   const nextData = { regionId: region.id, universityId: university?.id, ...toOfferData(input.data) };
   const afterData = offerSnapshot({ ...existingOffer, ...nextData });
   const fieldsChanged = changedFields(beforeData, afterData);
+  if (fieldsChanged.length === 0) {
+    const fullOffer = await prisma.offer.findFirst({
+      where: { id: existingOffer.id },
+      include: offerInclude
+    });
+    if (!fullOffer) {
+      throw new ApiError(404, "Offer not found");
+    }
+    return formatOffer(fullOffer, financialRules);
+  }
+
   const editedApprovedOffer = existingOffer.reviewStatus === OfferReviewStatus.approved;
 
   const offer = await prisma.$transaction(async (tx) => {

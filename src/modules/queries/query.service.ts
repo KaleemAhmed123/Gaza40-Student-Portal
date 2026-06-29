@@ -208,21 +208,46 @@ async function notifyAdmins(queryId: string) {
           : [])
       ]
     },
-    select: { email: true }
+    select: { email: true, roles: true }
   });
 
-  sendEmailBestEffort({
-    to: admins.map((admin) => admin.email),
-    subject: `New Gaza40 query: ${query.title}`,
-    text: `${query.student.fullName} raised a query.\n\n${query.message}`,
-    html: emailTemplates.notification(
-      "Admin",
-      "New Query Raised",
-      `${query.student.fullName} raised a new query: <strong>${query.title}</strong><br/><br/>${query.message}`,
-      `${env.FRONTEND_URL}/admin/queries/${query.id}`,
-      "View Query"
-    )
-  });
+  const masterAdminEmails = admins
+    .filter((admin) => admin.roles.includes(RoleCode.master_admin))
+    .map((admin) => admin.email);
+
+  const regionalAdminEmails = admins
+    .filter((admin) => admin.roles.includes(RoleCode.regional_admin) && !admin.roles.includes(RoleCode.master_admin))
+    .map((admin) => admin.email);
+
+  if (masterAdminEmails.length > 0) {
+    sendEmailBestEffort({
+      to: masterAdminEmails,
+      subject: `New Gaza40 query: ${query.title}`,
+      text: `${query.student.fullName} raised a query.\n\n${query.message}`,
+      html: emailTemplates.notification(
+        "Admin",
+        "New Query Raised",
+        `${query.student.fullName} raised a new query: <strong>${query.title}</strong><br/><br/>${query.message}`,
+        `${env.FRONTEND_URL}/admin/queries?queryId=${query.id}`,
+        "View Query"
+      )
+    });
+  }
+
+  if (regionalAdminEmails.length > 0) {
+    sendEmailBestEffort({
+      to: regionalAdminEmails,
+      subject: `New Gaza40 query: ${query.title}`,
+      text: `${query.student.fullName} raised a query.\n\n${query.message}`,
+      html: emailTemplates.notification(
+        "Regional Admin",
+        "New Query Raised",
+        `${query.student.fullName} raised a new query: <strong>${query.title}</strong><br/><br/>${query.message}`,
+        `${env.FRONTEND_URL}/regional-admin/queries?queryId=${query.id}`,
+        "View Query"
+      )
+    });
+  }
 }
 
 async function notifyRegionalAdmins(
@@ -255,8 +280,8 @@ async function notifyRegionalAdmins(
       "Regional Admin",
       subject,
       body,
-      `${env.FRONTEND_URL}/regional-admin/queries`,
-      "View Queries"
+      `${env.FRONTEND_URL}/regional-admin/queries?queryId=${queryId}`,
+      "View Query"
     )
   });
 
@@ -283,7 +308,7 @@ async function notifyMasterAdmins(subject: string, body: string, queryId: string
       "Admin",
       subject,
       body,
-      `${env.FRONTEND_URL}/admin/queries/${queryId}`,
+      `${env.FRONTEND_URL}/admin/queries?queryId=${queryId}`,
       "View Query"
     )
   });
@@ -754,6 +779,13 @@ export async function escalateAdminQuery(input: {
     );
   });
 
+  appEmitter.emit(AppEvents.QUERY_ESCALATED, {
+    queryId: query.id,
+    title: query.title,
+    escalatedTo: "master_admin",
+    remark: input.data.remark,
+  });
+
   return getQueryOrThrow(query.id);
 }
 
@@ -973,6 +1005,14 @@ export async function escalateMentorQuery(input: {
       );
     });
   }
+
+  appEmitter.emit(AppEvents.QUERY_ESCALATED, {
+    queryId: query.id,
+    title: query.title,
+    escalatedTo: targetRegionId ? "regional_admin" : "master_admin",
+    regionId: targetRegionId,
+    remark: input.data.remark,
+  });
 
   return getQueryOrThrow(query.id);
 }
