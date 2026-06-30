@@ -508,7 +508,7 @@ export const searchChatUsers = async (query: string, role?: string, regionId?: s
     const uniFilter = {
       OR: [
         { volunteerProfile: { is: { universityAffiliation: { contains: university, mode: "insensitive" } } } },
-        { studentProfile: { is: { bachelorUniGaza: { contains: university, mode: "insensitive" } } } }
+        { studentProfile: { is: { moiInstitutionName: { contains: university, mode: "insensitive" } } } }
       ]
     };
     if (where.AND) {

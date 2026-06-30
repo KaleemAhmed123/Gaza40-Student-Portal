@@ -28,7 +28,8 @@ export const updateStudentProfileSchema = z.object({
   emergencyContactLocation: z.string().min(1).optional(),
   consentSigned: z.boolean().optional(),
   englishMoi: z.boolean().optional(),
-  bachelorUniGaza: z.string().min(1).optional(),
+  moiInstitutionName: z.string().min(1).nullable().optional(),
+  moiInstitutionType: z.enum(["university", "school"]).nullable().optional(),
   englishWorkplaceCertificatePossible: z.boolean().optional(),
   englishOtherCerts: z.string().min(1).optional()
 });

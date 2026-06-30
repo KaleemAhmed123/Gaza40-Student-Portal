@@ -191,12 +191,6 @@ export async function submitMyStudentProfile(input: {
   requireProfileField(profile.emergencyContactRelation, "emergencyContactRelation", missingFields);
   requireProfileField(profile.emergencyContactPhone, "emergencyContactPhone", missingFields);
   requireProfileField(profile.consentSigned, "consentSigned", missingFields);
-  requireProfileField(profile.englishMoi, "englishMoi", missingFields);
-  requireProfileField(
-    profile.englishWorkplaceCertificatePossible,
-    "englishWorkplaceCertificatePossible",
-    missingFields
-  );
 
   if (profile.locationInGaza === "other") {
     requireProfileField(profile.locationOther, "locationOther", missingFields);
@@ -210,7 +204,8 @@ export async function submitMyStudentProfile(input: {
   }
 
   if (profile.englishMoi) {
-    requireProfileField(profile.bachelorUniGaza, "bachelorUniGaza", missingFields);
+    requireProfileField(profile.moiInstitutionName, "moiInstitutionName", missingFields);
+    requireProfileField(profile.moiInstitutionType, "moiInstitutionType", missingFields);
   }
 
   const missingDocuments: string[] = [];

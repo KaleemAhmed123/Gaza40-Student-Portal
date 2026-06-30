@@ -175,7 +175,8 @@ model StudentProfile {
   emergencyContactEmail               String?
   emergencyContactLocation            String?
   englishMoi                          Boolean?
-  bachelorUniGaza                     String?
+  moiInstitutionName                  String?
+  moiInstitutionType                  String?
   englishWorkplaceCertificatePossible Boolean?
   englishOtherCerts                   String?
   consentSigned                       Boolean           @default(false)

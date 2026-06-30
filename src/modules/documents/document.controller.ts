@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import { asyncHandler, sendSuccess } from "../../shared/http";
 import { uploadDocumentSchema } from "./document.validation";
-import { getDownloadableDocument, saveDocument } from "./document.service";
+import { getDownloadableDocument, saveDocument, deleteDocument } from "./document.service";
 import { verifyCsvDocToken } from "./csv-doc-token";
 import { prisma } from "../../db/prisma";
 import { ApiError } from "../../shared/http";
@@ -159,4 +159,9 @@ export const csvSignedDownloadHandler = asyncHandler(async (req, res) => {
   }
 
   res.redirect(302, presignedUrl);
+});
+
+export const deleteDocumentHandler = asyncHandler(async (req, res) => {
+  await deleteDocument(req.params.id, req.authUser!.id);
+  sendSuccess(res, { message: "Document removed" });
 });

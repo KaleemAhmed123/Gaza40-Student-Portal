@@ -241,3 +241,22 @@ export async function getDownloadableDocument(input: {
     url: signedUrl
   };
 }
+
+export async function deleteDocument(documentId: string, requestingUserId: string) {
+  const document = await prisma.document.findFirst({
+    where: { id: documentId, status: DocumentStatus.active, deletedAt: null }
+  });
+
+  if (!document) {
+    throw new ApiError(404, "Document not found");
+  }
+
+  if (document.ownerUserId !== requestingUserId) {
+    throw new ApiError(403, "You do not have permission to delete this document");
+  }
+
+  return prisma.document.update({
+    where: { id: documentId },
+    data: { status: DocumentStatus.superseded, deletedAt: new Date() }
+  });
+}
