@@ -22,7 +22,7 @@ export const listPublishedAnnouncementsHandler = asyncHandler(async (req, res) =
 });
 
 export const getPublishedAnnouncementHandler = asyncHandler(async (req, res) => {
-  const announcement = await getPublishedAnnouncement(req.params.id);
+  const announcement = await getPublishedAnnouncement(req.params.id, req.authUser!);
   sendSuccess(res, { announcement });
 });
 

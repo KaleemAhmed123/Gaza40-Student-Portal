@@ -72,45 +72,96 @@ async function ensureAnnouncement(id: string) {
   return announcement;
 }
 
-async function ensureAdminAccess(
-  announcement: any,
-  user: { id: string; roles: string[] },
-  strictlyOwn = false
-) {
-  if (user.roles.includes("regional_admin") && !user.roles.includes("master_admin")) {
-    if (announcement.createdByUserId === user.id) {
-      return;
-    }
-    if (strictlyOwn) {
-      throw new ApiError(403, "You do not have permission to modify this announcement");
-    }
-    const profile = await prisma.regionalAdminProfile.findUnique({
-      where: { userId: user.id }
+/**
+ * Resolves the set of region IDs the user is allowed to access.
+ * Returns null to indicate unrestricted access (master admin).
+ */
+async function getUserAccessibleRegionIds(user: { id: string; roles: string[] }): Promise<string[] | null> {
+  if (user.roles.includes("master_admin")) {
+    return null; // unrestricted
+  }
+
+  if (user.roles.includes("regional_admin")) {
+    const profile = await prisma.regionalAdminProfile.findUnique({ where: { userId: user.id } });
+    return profile?.regionId ? [profile.regionId] : [];
+  }
+
+  if (user.roles.includes("student")) {
+    const offers = await prisma.offer.findMany({
+      where: { studentUserId: user.id, deletedAt: null },
+      select: { regionId: true }
     });
-    const regId = profile?.regionId ?? null;
-    if (announcement.regionId === null || (regId && announcement.regionId === regId)) {
-      return;
-    }
+    return offers.map(o => o.regionId).filter((id): id is string => Boolean(id));
+  }
+
+  if (user.roles.includes("mentor")) {
+    const [volunteerProfile, mentorOffers] = await Promise.all([
+      prisma.volunteerProfile.findUnique({ where: { userId: user.id } }),
+      prisma.offer.findMany({ where: { mentorId: user.id, deletedAt: null }, select: { regionId: true } })
+    ]);
+    return [
+      ...(volunteerProfile?.preferredRegionId ? [volunteerProfile.preferredRegionId] : []),
+      ...mentorOffers.map(o => o.regionId)
+    ].filter((id): id is string => Boolean(id));
+  }
+
+  return [];
+}
+
+/**
+ * Builds a Prisma-compatible region filter clause based on the user's accessible regions.
+ */
+async function buildRegionFilter(user: { id: string; roles: string[] }) {
+  const accessibleRegionIds = await getUserAccessibleRegionIds(user);
+
+  if (accessibleRegionIds === null) return {}; // master admin: no filter
+
+  return {
+    OR: [
+      { regionId: null },
+      ...(accessibleRegionIds.length > 0 ? [{ regionId: { in: accessibleRegionIds } }] : [])
+    ]
+  };
+}
+
+/**
+ * Validates a user can view a specific announcement.
+ * Global announcements (no region) are open to all.
+ * Region-targeted announcements are restricted to users who have access to that region.
+ */
+async function ensureAnnouncementViewAccess(announcement: { regionId: string | null }, user: { id: string; roles: string[] }) {
+  if (!announcement.regionId) return; // global announcement, open to all
+
+  const accessibleRegionIds = await getUserAccessibleRegionIds(user);
+
+  if (accessibleRegionIds === null) return; // master admin, unrestricted
+
+  if (!accessibleRegionIds.includes(announcement.regionId)) {
     throw new ApiError(403, "You do not have permission to access this announcement");
   }
 }
 
-async function validateRegionTarget(regionId: string | null | undefined, user: { id: string; roles: string[] }) {
-  if (!regionId) {
-    return;
-  }
+/**
+ * Validates a user can mutate (edit/delete) an announcement.
+ * Master admins can modify any announcement.
+ * Non-master-admin roles (including regional_admin) can only modify their own.
+ */
+function ensureAuthorOrAdmin(announcement: { createdByUserId: string }, user: { id: string; roles: string[] }) {
+  if (user.roles.includes("master_admin")) return;
+  if (announcement.createdByUserId === user.id) return;
+  throw new ApiError(403, "Only the author or a Master Admin can modify this announcement");
+}
 
-  const region = await prisma.region.findFirst({
-    where: { id: regionId, deletedAt: null }
-  });
+async function validateRegionTarget(regionId: string | null | undefined, user: { id: string; roles: string[] }) {
+  if (!regionId) return;
+
+  const region = await prisma.region.findFirst({ where: { id: regionId, deletedAt: null } });
   if (!region) {
     throw new ApiError(400, "Target region does not exist");
   }
 
   if (user.roles.includes("regional_admin") && !user.roles.includes("master_admin")) {
-    const profile = await prisma.regionalAdminProfile.findUnique({
-      where: { userId: user.id }
-    });
+    const profile = await prisma.regionalAdminProfile.findUnique({ where: { userId: user.id } });
     if (!profile || profile.regionId !== regionId) {
       throw new ApiError(403, "You can only target announcements to your assigned region");
     }
@@ -118,60 +169,7 @@ async function validateRegionTarget(regionId: string | null | undefined, user: {
 }
 
 export async function listPublishedAnnouncements(query: ListAnnouncementsQuery, user: { id: string; roles: string[] }) {
-  const isMasterAdmin = user.roles.includes("master_admin");
-  const isRegionalAdmin = user.roles.includes("regional_admin");
-  const isStudent = user.roles.includes("student");
-  const isMentor = user.roles.includes("mentor");
-
-  let regionFilter: any = {};
-
-  if (isMasterAdmin) {
-    regionFilter = {};
-  } else if (isRegionalAdmin) {
-    const profile = await prisma.regionalAdminProfile.findUnique({
-      where: { userId: user.id }
-    });
-    const regId = profile?.regionId ?? null;
-    regionFilter = {
-      OR: [
-        { regionId: null },
-        ...(regId ? [{ regionId: regId }] : [])
-      ]
-    };
-  } else if (isStudent) {
-    const studentOffers = await prisma.offer.findMany({
-      where: { studentUserId: user.id, deletedAt: null },
-      select: { regionId: true }
-    });
-    const studentRegionIds = studentOffers.map(o => o.regionId).filter(Boolean);
-    regionFilter = {
-      OR: [
-        { regionId: null },
-        ...(studentRegionIds.length > 0 ? [{ regionId: { in: studentRegionIds } }] : [])
-      ]
-    };
-  } else if (isMentor) {
-    const volunteerProfile = await prisma.volunteerProfile.findUnique({
-      where: { userId: user.id }
-    });
-    const mentorOffers = await prisma.offer.findMany({
-      where: { mentorId: user.id, deletedAt: null },
-      select: { regionId: true }
-    });
-    const mentorRegionIds = [
-      ...(volunteerProfile?.preferredRegionId ? [volunteerProfile.preferredRegionId] : []),
-      ...mentorOffers.map(o => o.regionId)
-    ].filter(Boolean);
-
-    regionFilter = {
-      OR: [
-        { regionId: null },
-        ...(mentorRegionIds.length > 0 ? [{ regionId: { in: mentorRegionIds } }] : [])
-      ]
-    };
-  } else {
-    regionFilter = { regionId: null };
-  }
+  const regionFilter = await buildRegionFilter(user);
 
   return prisma.announcement.findMany({
     where: {
@@ -185,7 +183,7 @@ export async function listPublishedAnnouncements(query: ListAnnouncementsQuery, 
   });
 }
 
-export async function getPublishedAnnouncement(id: string) {
+export async function getPublishedAnnouncement(id: string, user: { id: string; roles: string[] }) {
   if (!/^[0-9a-fA-F]{24}$/.test(id)) {
     throw new ApiError(400, "Invalid announcement ID format");
   }
@@ -197,6 +195,8 @@ export async function getPublishedAnnouncement(id: string) {
   if (!announcement) {
     throw new ApiError(404, "Announcement not found");
   }
+
+  await ensureAnnouncementViewAccess(announcement, user);
 
   return announcement;
 }
@@ -236,7 +236,7 @@ export async function listAdminAnnouncements(
 
 export async function getAdminAnnouncement(id: string, user: { id: string; roles: string[] }) {
   const announcement = await ensureAnnouncement(id);
-  await ensureAdminAccess(announcement, user, false);
+  await ensureAnnouncementViewAccess(announcement, user);
   return announcement;
 }
 
@@ -327,7 +327,7 @@ export async function updateAnnouncement(input: {
   userAgent?: string;
 }) {
   const announcement = await ensureAnnouncement(input.announcementId);
-  await ensureAdminAccess(announcement, input.user, true);
+  ensureAuthorOrAdmin(announcement, input.user);
 
   await ensureCategory(input.data.category);
   if (input.data.regionId !== undefined) {
@@ -387,7 +387,7 @@ export async function deleteAnnouncement(input: {
   userAgent?: string;
 }) {
   const announcement = await ensureAnnouncement(input.announcementId);
-  await ensureAdminAccess(announcement, input.user, true);
+  ensureAuthorOrAdmin(announcement, input.user);
 
   const deletedAnnouncement = await prisma.announcement.update({
     where: { id: announcement.id },
