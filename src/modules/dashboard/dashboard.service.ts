@@ -270,6 +270,7 @@ export async function getAdminDashboard(userId: string) {
         scholarshipAmountPerYear: true,
         scholarshipCoversLivingCost: true,
         privateFundingAmount: true,
+        privateFundingInterval: true,
         livingCostLocationKey: true,
         livingCostForVisa: true,
         boardingFees: true,
@@ -309,7 +310,7 @@ export async function getAdminDashboard(userId: string) {
               : undefined,
             scholarshipCoversLivingCost: offer.scholarshipCoversLivingCost,
             privateFundingAmount: decimalToNumber(offer.privateFundingAmount),
-            privateFundingInterval: (offer as any).privateFundingInterval,
+            privateFundingInterval: offer.privateFundingInterval,
             livingCostLocationKey: offer.livingCostLocationKey,
             livingCostForVisa: offer.livingCostForVisa ? decimalToNumber(offer.livingCostForVisa) : undefined,
             boardingFees: offer.boardingFees ? decimalToNumber(offer.boardingFees) : undefined
@@ -326,14 +327,7 @@ export async function getAdminDashboard(userId: string) {
         const minGapObj = offersWithGap.reduce((min, curr) => (curr.gap < min.gap ? curr : min), offersWithGap[0]);
         totalFundingGap += minGapObj.gap;
 
-        // count of students who have fully funded approved offers - pick the one with nearest program start date
-        const nearestOfferObj = offersWithGap.reduce((nearest, curr) => {
-          const currDiff = Math.abs(new Date(curr.offer.programmeStartDate).getTime() - nowTime);
-          const nearestDiff = Math.abs(new Date(nearest.offer.programmeStartDate).getTime() - nowTime);
-          return currDiff < nearestDiff ? curr : nearest;
-        }, offersWithGap[0]);
-
-        if (nearestOfferObj.gap === 0) {
+        if (minGapObj.gap === 0) {
           fullyFundedStudentsCount += 1;
         }
       }
@@ -383,7 +377,7 @@ export async function getAdminDashboard(userId: string) {
 }
 
 export async function getMentorDashboard(userId: string) {
-  const [queryCounts, recentQueries, offerCounts, recentOffers] = await Promise.all([
+  const [queryCounts, recentQueries, offerCounts, recentOffers, assignedOffersForStudents, assignedQueriesForStudents] = await Promise.all([
     prisma.query.groupBy({
       by: ["status"],
       where: { assignedToUserId: userId, deletedAt: null },
@@ -437,8 +431,105 @@ export async function getMentorDashboard(userId: string) {
       },
       orderBy: { updatedAt: "desc" },
       take: 5
+    }),
+    prisma.offer.findMany({
+      where: { mentorId: userId, deletedAt: null },
+      select: { studentUserId: true }
+    }),
+    prisma.query.findMany({
+      where: { assignedToUserId: userId, deletedAt: null },
+      select: { studentUserId: true }
     })
   ]);
+
+  const assignedStudentUserIds = Array.from(
+    new Set([
+      ...assignedOffersForStudents.map((o) => o.studentUserId),
+      ...assignedQueriesForStudents.map((q) => q.studentUserId)
+    ])
+  );
+
+  let totalFundingGap = 0;
+  let fullyFundedStudentsCount = 0;
+
+  if (assignedStudentUserIds.length > 0) {
+    try {
+      const [approvedOffersForMetrics, financialRules] = await Promise.all([
+        prisma.offer.findMany({
+          where: {
+            studentUserId: { in: assignedStudentUserIds },
+            reviewStatus: OfferReviewStatus.approved,
+            deletedAt: null
+          },
+          select: {
+            id: true,
+            studentUserId: true,
+            region: { select: { name: true } },
+            courseLevel: true,
+            durationYears: true,
+            tuitionFeePerYear: true,
+            scholarshipAmountPerYear: true,
+            scholarshipCoversLivingCost: true,
+            privateFundingAmount: true,
+            privateFundingInterval: true,
+            livingCostLocationKey: true,
+            livingCostForVisa: true,
+            boardingFees: true,
+            programmeStartDate: true
+          }
+        }),
+        getOfferFinancialRules()
+      ]);
+
+      const studentOffersMap: Record<string, typeof approvedOffersForMetrics> = {};
+      for (const offer of approvedOffersForMetrics) {
+        if (!studentOffersMap[offer.studentUserId]) {
+          studentOffersMap[offer.studentUserId] = [];
+        }
+        studentOffersMap[offer.studentUserId].push(offer);
+      }
+
+      for (const studentUserId of Object.keys(studentOffersMap)) {
+        const studentOffers = studentOffersMap[studentUserId];
+        
+        const offersWithGap = studentOffers.map((offer) => {
+          let gap = 0;
+          try {
+            const summary = calculateOfferFinancialSummary(financialRules, {
+              countryName: offer.region.name,
+              courseLevel: offer.courseLevel,
+              durationYears: decimalToNumber(offer.durationYears),
+              tuitionFeePerYear: decimalToNumber(offer.tuitionFeePerYear),
+              scholarshipAmountPerYear: offer.scholarshipAmountPerYear
+                ? decimalToNumber(offer.scholarshipAmountPerYear)
+                : undefined,
+              scholarshipCoversLivingCost: offer.scholarshipCoversLivingCost,
+              privateFundingAmount: decimalToNumber(offer.privateFundingAmount),
+              privateFundingInterval: offer.privateFundingInterval,
+              livingCostLocationKey: offer.livingCostLocationKey,
+              livingCostForVisa: offer.livingCostForVisa ? decimalToNumber(offer.livingCostForVisa) : undefined,
+              boardingFees: offer.boardingFees ? decimalToNumber(offer.boardingFees) : undefined
+            });
+            gap = summary.tuitionFeePerYearGap + summary.livingCostGap;
+          } catch (e) {
+            console.error(`Error calculating gap for offer ${offer.id}:`, e);
+          }
+          return { offer, gap };
+        });
+
+        if (offersWithGap.length > 0) {
+          const minGapObj = offersWithGap.reduce((min, curr) => (curr.gap < min.gap ? curr : min), offersWithGap[0]);
+          totalFundingGap += minGapObj.gap;
+
+          if (minGapObj.gap === 0) {
+            fullyFundedStudentsCount += 1;
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to calculate mentor dashboard funding gap metrics:", err);
+    }
+  }
 
   const byStatus = countRows(queryCounts.map((row) => ({ key: row.status, count: groupCount(row._count) })));
   const offersByStatus = countRows(
@@ -460,6 +551,8 @@ export async function getMentorDashboard(userId: string) {
     recent: {
       assignedQueries: recentQueries,
       assignedOffers: recentOffers
-    }
+    },
+    totalFundingGap,
+    fullyFundedStudentsCount
   };
 }
