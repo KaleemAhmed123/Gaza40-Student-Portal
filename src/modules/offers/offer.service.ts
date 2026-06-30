@@ -1277,6 +1277,18 @@ export async function getMentorStudentDetails(mentorId: string, studentId: strin
     throw new ApiError(404, "Student not found");
   }
 
+  // Handle expired passport and sensitive profile fields cleanup
+  if (student.studentProfile) {
+    const isExpired = student.studentProfile.passportExpiry && new Date(student.studentProfile.passportExpiry) < new Date();
+    if (isExpired) {
+      student.studentProfile.passportStatus = "expired" as any;
+    }
+
+    student.studentProfile.passportNumber = null;
+    student.studentProfile.nationalIdNumber = null;
+    student.studentProfile.passportExpiry = null;
+  }
+
   const timeline: any[] = [];
 
   timeline.push({

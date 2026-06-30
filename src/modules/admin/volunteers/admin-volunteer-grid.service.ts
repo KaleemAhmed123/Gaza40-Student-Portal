@@ -4,14 +4,11 @@ import { prisma } from "../../../db/prisma";
 import { recordAuditLog } from "../../../shared/audit";
 import { toCsv } from "../../../shared/csv";
 import { ApiError } from "../../../shared/http";
+import { getAdminScope, type AdminScope } from "../../../shared/auth-scope";
 import type {
   ListAdminVolunteersQuery,
   UpdateVolunteerAssignmentInput
 } from "./admin-volunteer-grid.validation";
-
-export type AdminScope =
-  | { role: "master_admin"; regionId?: never }
-  | { role: "regional_admin"; regionId: string };
 
 function addCount(summary: Record<string, number>, key?: string | null) {
   if (!key) {
@@ -19,35 +16,6 @@ function addCount(summary: Record<string, number>, key?: string | null) {
   }
 
   summary[key] = (summary[key] ?? 0) + 1;
-}
-
-export async function getAdminScope(userId: string): Promise<AdminScope> {
-  const user = await prisma.user.findFirst({
-    where: {
-      id: userId,
-      deletedAt: null,
-      accountStatus: "active"
-    },
-    include: { regionalAdminProfile: true }
-  });
-
-  if (!user) {
-    throw new ApiError(403, "You do not have permission to access volunteers");
-  }
-
-  if (user.roles.includes(RoleCode.master_admin)) {
-    return { role: "master_admin" };
-  }
-
-  if (
-    user.roles.includes(RoleCode.regional_admin) &&
-    user.regionalAdminProfile?.status === "active" &&
-    !user.regionalAdminProfile.deletedAt
-  ) {
-    return { role: "regional_admin", regionId: user.regionalAdminProfile.regionId };
-  }
-
-  throw new ApiError(403, "You do not have permission to access volunteers");
 }
 
 function buildSearchWhere(search?: string): Prisma.UserWhereInput {
@@ -307,7 +275,7 @@ export async function exportAdminVolunteersCsv(input: {
     actorUserId: input.userId,
     action: "volunteers_exported",
     entityType: "volunteer",
-    metadata: { scope, filters: input.query, rowCount: rows.length },
+    metadata: { scope: scope as any, filters: input.query, rowCount: rows.length },
     ipAddress: input.ipAddress,
     userAgent: input.userAgent
   });
@@ -415,7 +383,7 @@ export async function updateVolunteerAssignment(input: {
     entityType: "volunteer",
     entityId: volunteer.id,
     metadata: {
-      scope,
+      scope: scope as any,
       previousStatus: volunteer.volunteerProfile.volunteerStatus,
       previousPreferredRegionId: volunteer.volunteerProfile.preferredRegionId,
       next: input.data

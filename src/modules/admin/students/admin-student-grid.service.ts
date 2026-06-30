@@ -4,11 +4,8 @@ import { prisma } from "../../../db/prisma";
 import { recordAuditLog } from "../../../shared/audit";
 import { toCsv } from "../../../shared/csv";
 import { ApiError } from "../../../shared/http";
+import { getAdminScope, type AdminScope } from "../../../shared/auth-scope";
 import type { ListAdminStudentsQuery } from "./admin-student-grid.validation";
-
-type AdminScope =
-  | { role: "master_admin"; regionId?: never }
-  | { role: "regional_admin"; regionId: string };
 
 function addCount(summary: Record<string, number>, key?: string | null) {
   if (!key) {
@@ -16,35 +13,6 @@ function addCount(summary: Record<string, number>, key?: string | null) {
   }
 
   summary[key] = (summary[key] ?? 0) + 1;
-}
-
-async function getAdminScope(userId: string): Promise<AdminScope> {
-  const user = await prisma.user.findFirst({
-    where: {
-      id: userId,
-      deletedAt: null,
-      accountStatus: "active"
-    },
-    include: { regionalAdminProfile: true }
-  });
-
-  if (!user) {
-    throw new ApiError(403, "You do not have permission to access students");
-  }
-
-  if (user.roles.includes(RoleCode.master_admin)) {
-    return { role: "master_admin" };
-  }
-
-  if (
-    user.roles.includes(RoleCode.regional_admin) &&
-    user.regionalAdminProfile?.status === "active" &&
-    !user.regionalAdminProfile.deletedAt
-  ) {
-    return { role: "regional_admin", regionId: user.regionalAdminProfile.regionId };
-  }
-
-  throw new ApiError(403, "You do not have permission to access students");
 }
 
 function buildSearchWhere(search?: string): Prisma.UserWhereInput {
@@ -121,6 +89,7 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
               dateOfBirth: true,
               locationInGaza: true,
               passportStatus: true,
+              passportExpiry: true,
               consentSigned: true,
               profileStatus: true,
               hasVerifiedOffer: true
@@ -156,16 +125,26 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
 
     return {
       scope,
-      students: students.map((student) => ({
-        id: student.id,
-        fullName: student.fullName,
-        email: student.email,
-        phone: student.phone,
-        dateOfBirth: student.studentProfile?.dateOfBirth ?? student.dateOfBirth,
-        profile: student.studentProfile,
-        offerCountInRegion: student.studentOffers.length,
-        offers: student.studentOffers
-      })),
+      students: students.map((student) => {
+        const profile = student.studentProfile ? { ...student.studentProfile } : null;
+        if (profile) {
+          const isExpired = profile.passportExpiry && new Date(profile.passportExpiry) < new Date();
+          if (isExpired) {
+            profile.passportStatus = "expired" as any;
+          }
+          profile.passportExpiry = null;
+        }
+        return {
+          id: student.id,
+          fullName: student.fullName,
+          email: student.email,
+          phone: student.phone,
+          dateOfBirth: student.studentProfile?.dateOfBirth ?? student.dateOfBirth,
+          profile,
+          offerCountInRegion: student.studentOffers.length,
+          offers: student.studentOffers
+        };
+      }),
       summary: {
         total
       },
@@ -216,6 +195,7 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
             locationInGaza: true,
             passportStatus: true,
             passportLocation: true,
+            passportExpiry: true,
             consentSigned: true,
             profileStatus: true,
             hasOfferSelfReported: true,
@@ -301,18 +281,27 @@ export async function listAdminStudents(userId: string, query: ListAdminStudents
 
   return {
     scope,
-    students: students.map((student) => ({
-      id: student.id,
-      fullName: student.fullName,
-      email: student.email,
-      phone: student.phone,
-      dateOfBirth: student.studentProfile?.dateOfBirth ?? student.dateOfBirth,
-      createdAt: student.createdAt,
-      accountStatus: student.accountStatus,
-      profile: student.studentProfile,
-      offerCount: student.studentOffers.length,
-      offers: student.studentOffers
-    })),
+    students: students.map((student) => {
+      const profile = student.studentProfile ? { ...student.studentProfile } : null;
+      if (profile) {
+        const isExpired = profile.passportExpiry && new Date(profile.passportExpiry) < new Date();
+        if (isExpired) {
+          profile.passportStatus = "expired" as any;
+        }
+      }
+      return {
+        id: student.id,
+        fullName: student.fullName,
+        email: student.email,
+        phone: student.phone,
+        dateOfBirth: student.studentProfile?.dateOfBirth ?? student.dateOfBirth,
+        createdAt: student.createdAt,
+        accountStatus: student.accountStatus,
+        profile,
+        offerCount: student.studentOffers.length,
+        offers: student.studentOffers
+      };
+    }),
     summary,
     pagination: { page: query.page, pageSize: query.pageSize, total }
   };
@@ -494,7 +483,7 @@ export async function streamAdminStudentsCsv(input: {
     actorUserId: input.userId,
     action: "students_exported",
     entityType: "student",
-    metadata: { scope, filters: input.query, rowCount: totalRows },
+    metadata: { scope: scope as any, filters: input.query, rowCount: totalRows },
     ipAddress: input.ipAddress,
     userAgent: input.userAgent
   });
@@ -502,6 +491,10 @@ export async function streamAdminStudentsCsv(input: {
 
 export async function getAdminStudentDetails(userId: string, studentId: string) {
   const scope = await getAdminScope(userId);
+
+  const allowedDocTypes = scope.role === "regional_admin"
+    ? ["moi_letter", "consent_form", "signature", "english_proficiency"]
+    : ["passport", "national_id", "moi_letter", "consent_form", "signature", "english_proficiency"];
 
   const student = await prisma.user.findFirst({
     where: { id: studentId, roles: { has: RoleCode.student }, deletedAt: null },
@@ -512,7 +505,7 @@ export async function getAdminStudentDetails(userId: string, studentId: string) 
             where: {
               status: "active",
               deletedAt: null,
-              documentType: { in: ["passport", "national_id", "moi_letter", "consent_form", "signature", "english_proficiency"] }
+              documentType: { in: allowedDocTypes as any[] }
             }
           }
         }
@@ -521,7 +514,7 @@ export async function getAdminStudentDetails(userId: string, studentId: string) 
         where: {
           status: "active",
           deletedAt: null,
-          documentType: { in: ["passport", "national_id", "moi_letter", "consent_form", "signature", "english_proficiency"] }
+          documentType: { in: allowedDocTypes as any[] }
         }
       },
       studentOffers: {
@@ -575,6 +568,20 @@ export async function getAdminStudentDetails(userId: string, studentId: string) 
     const hasQueryInRegion = student.studentQueries.some((q) => q.regionId === scope.regionId);
     if (!hasOfferInRegion && !hasQueryInRegion) {
       throw new ApiError(403, "You do not have permission to access this student");
+    }
+  }
+
+  // Handle expired passport and sensitive profile fields cleanup
+  if (student.studentProfile) {
+    const isExpired = student.studentProfile.passportExpiry && new Date(student.studentProfile.passportExpiry) < new Date();
+    if (isExpired) {
+      student.studentProfile.passportStatus = "expired" as any;
+    }
+
+    if (scope.role === "regional_admin") {
+      student.studentProfile.passportNumber = null;
+      student.studentProfile.nationalIdNumber = null;
+      student.studentProfile.passportExpiry = null;
     }
   }
 

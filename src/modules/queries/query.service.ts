@@ -5,6 +5,7 @@ import { sendEmailBestEffort } from "../../shared/email";
 import { emailTemplates } from "../../shared/email-templates";
 import { env } from "../../config/env";
 import { ApiError } from "../../shared/http";
+import { getAdminScope as getAdminScopeCentral } from "../../shared/auth-scope";
 import { appEmitter, AppEvents } from "../../shared/events";
 import type {
   AddQueryMessageInput,
@@ -121,32 +122,11 @@ async function getActiveQueryCategory(queryType: string) {
 }
 
 async function getAdminScope(userId: string) {
-  const user = await prisma.user.findFirst({
-    where: {
-      id: userId,
-      deletedAt: null,
-      accountStatus: "active"
-    },
-    include: { regionalAdminProfile: true }
-  });
-
-  if (!user) {
-    throw new ApiError(403, "You do not have permission to access queries");
-  }
-
-  if (user.roles.includes(RoleCode.master_admin)) {
-    return { isMasterAdmin: true, regionId: undefined };
-  }
-
-  if (
-    user.roles.includes(RoleCode.regional_admin) &&
-    user.regionalAdminProfile?.status === "active" &&
-    !user.regionalAdminProfile.deletedAt
-  ) {
-    return { isMasterAdmin: false, regionId: user.regionalAdminProfile.regionId };
-  }
-
-  throw new ApiError(403, "You do not have permission to access queries");
+  const scope = await getAdminScopeCentral(userId);
+  return {
+    isMasterAdmin: scope.role === "master_admin",
+    regionId: scope.regionId
+  };
 }
 
 async function assertAdminCanAccessQuery(userId: string, regionId: string | null) {

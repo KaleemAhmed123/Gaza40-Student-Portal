@@ -1,6 +1,7 @@
 import { OfferReviewStatus, QueryStatus, RoleCode } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { ApiError } from "../../shared/http";
+import { getAdminScope as getAdminScopeCentral } from "../../shared/auth-scope";
 import { calculateOfferFinancialSummary, decimalToNumber } from "../offers/offer-financial";
 import { getOfferFinancialRules } from "../offers/offer.service";
 
@@ -29,36 +30,19 @@ function groupCount(value: unknown) {
 }
 
 async function getAdminScope(userId: string): Promise<AdminScope> {
-  const user = await prisma.user.findFirst({
-    where: { id: userId, deletedAt: null, accountStatus: "active" },
-    include: {
-      regionalAdminProfile: {
-        include: { region: true }
-      }
-    }
-  });
-
-  if (!user) {
-    throw new ApiError(403, "You do not have permission to access dashboard");
+  const scope = await getAdminScopeCentral(userId);
+  let regionName: string | undefined;
+  if (scope.role === "regional_admin" && scope.regionId) {
+    const region = await prisma.region.findFirst({
+      where: { id: scope.regionId }
+    });
+    regionName = region?.name;
   }
-
-  if (user.roles.includes(RoleCode.master_admin)) {
-    return { role: "master_admin" };
-  }
-
-  if (
-    user.roles.includes(RoleCode.regional_admin) &&
-    user.regionalAdminProfile?.status === "active" &&
-    !user.regionalAdminProfile.deletedAt
-  ) {
-    return {
-      role: "regional_admin",
-      regionId: user.regionalAdminProfile.regionId,
-      regionName: user.regionalAdminProfile.region.name
-    };
-  }
-
-  throw new ApiError(403, "You do not have permission to access dashboard");
+  return {
+    role: scope.role,
+    regionId: scope.regionId,
+    regionName
+  } as AdminScope;
 }
 
 export async function getStudentDashboard(userId: string) {

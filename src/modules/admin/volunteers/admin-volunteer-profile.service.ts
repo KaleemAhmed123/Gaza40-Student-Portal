@@ -1,7 +1,7 @@
 import { RoleCode } from "@prisma/client";
 import { prisma } from "../../../db/prisma";
 import { ApiError } from "../../../shared/http";
-import { getAdminScope } from "./admin-volunteer-grid.service";
+import { getAdminScope } from "../../../shared/auth-scope";
 
 export async function getAdminVolunteerProfile(actorUserId: string, volunteerId: string) {
   const scope = await getAdminScope(actorUserId);

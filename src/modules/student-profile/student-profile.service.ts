@@ -19,12 +19,18 @@ const passportRequiresDocument = new Set<PassportStatus>([
   PassportStatus.valid_expires_within_year
 ]);
 
-function formatProfile(profile: Awaited<ReturnType<typeof getStudentProfileByUserId>>) {
+function formatProfile(profile: any) {
+  if (profile) {
+    const isExpired = profile.passportExpiry && new Date(profile.passportExpiry) < new Date();
+    if (isExpired) {
+      profile.passportStatus = "expired";
+    }
+  }
   return profile;
 }
 
 export async function getStudentProfileByUserId(userId: string) {
-  const profile = await prisma.studentProfile.findUnique({
+  let profile = await prisma.studentProfile.findUnique({
     where: { userId },
     include: {
       documents: {
@@ -46,7 +52,7 @@ export async function getStudentProfileByUserId(userId: string) {
   });
 
   if (profile?.deletedAt) {
-    return prisma.studentProfile.update({
+    profile = await prisma.studentProfile.update({
       where: { id: profile.id },
       data: { deletedAt: null },
       include: {
@@ -83,7 +89,7 @@ export async function getStudentProfileByUserId(userId: string) {
       throw new ApiError(404, "Student profile not found");
     }
 
-    return prisma.studentProfile.create({
+    profile = await prisma.studentProfile.create({
       data: {
         userId,
         hasOfferSelfReported: false,
@@ -109,11 +115,7 @@ export async function getStudentProfileByUserId(userId: string) {
     });
   }
 
-  if (!profile) {
-    throw new ApiError(404, "Student profile not found");
-  }
-
-  return profile;
+  return formatProfile(profile);
 }
 
 export async function updateMyStudentProfile(userId: string, input: UpdateStudentProfileInput) {
