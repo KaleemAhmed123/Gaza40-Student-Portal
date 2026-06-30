@@ -7,7 +7,8 @@ import { getOfferFinancialRules } from "../offers/offer.service";
 
 type AdminScope =
   | { role: "master_admin"; regionId?: never; regionName?: never }
-  | { role: "regional_admin"; regionId: string; regionName: string };
+  | { role: "regional_admin"; regionId: string; regionName: string }
+  | { role: "reviewer"; regionId?: never; regionName?: never };
 
 function countRows<T extends string>(rows: Array<{ key: T; count: number }>) {
   return rows.reduce<Record<string, number>>((acc, row) => {
@@ -134,6 +135,48 @@ export async function getStudentDashboard(userId: string) {
 
 export async function getAdminDashboard(userId: string) {
   const scope = await getAdminScope(userId);
+
+  if (scope.role === "reviewer") {
+    const studentTotal = await prisma.user.count({
+      where: {
+        deletedAt: null,
+        roles: { has: RoleCode.student }
+      }
+    });
+    return {
+      scope,
+      counts: {
+        students: {
+          total: studentTotal,
+          byProfileStatus: {}
+        },
+        offers: {
+          total: 0,
+          byReviewStatus: {}
+        },
+        queries: {
+          total: 0,
+          byStatus: {}
+        },
+        volunteers: {
+          total: 0,
+          byStatus: {}
+        },
+        announcements: {
+          published: 0,
+          draft: 0
+        }
+      },
+      recent: {
+        offers: [],
+        queries: [],
+        auditLogs: []
+      },
+      totalFundingGap: 0,
+      fullyFundedStudentsCount: 0
+    };
+  }
+
   const offerWhere = {
     deletedAt: null,
     ...(scope.role === "regional_admin" ? { regionId: scope.regionId } : {})

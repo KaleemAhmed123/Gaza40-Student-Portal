@@ -15,7 +15,9 @@ async function safelyDispatchNotification(input: {
 }) {
   try {
     const notification = await createNotification(input);
-    emitToUser(input.userId, "notification_new_message", notification);
+    if (notification) {
+      emitToUser(input.userId, "notification_new_message", notification);
+    }
   } catch (error) {
     console.error("[Notification Listener] Failed to dispatch notification:", error);
   }
@@ -34,21 +36,26 @@ appEmitter.on(AppEvents.PROFILE_SUBMITTED, async (payload: { studentUserId: stri
     link: "/student/profile",
   });
 
-  // Notify Master Admins
+  // Notify Master Admins and Reviewers
   try {
     const student = await prisma.user.findUnique({ where: { id: payload.studentUserId }, select: { fullName: true }});
-    const masterAdmins = await prisma.user.findMany({
-      where: { roles: { has: "master_admin" }, deletedAt: null, accountStatus: "active" },
-      select: { id: true }
+    const reviewersAndAdmins = await prisma.user.findMany({
+      where: {
+        roles: { hasSome: ["master_admin", "reviewer"] },
+        deletedAt: null,
+        accountStatus: "active"
+      },
+      select: { id: true, roles: true }
     });
     
-    masterAdmins.forEach(admin => {
+    reviewersAndAdmins.forEach(admin => {
+      const isReviewer = admin.roles.includes("reviewer");
       safelyDispatchNotification({
         userId: admin.id,
         type: "admin_profile_submitted",
         title: "New Profile Submitted",
         body: `${student?.fullName || 'A student'} has submitted a new profile for review.`,
-        link: "/admin/student-reviews"
+        link: isReviewer ? "/reviewer/student-reviews" : "/admin/student-reviews"
       });
     });
   } catch(e) {

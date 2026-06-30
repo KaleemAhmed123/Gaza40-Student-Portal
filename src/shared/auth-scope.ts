@@ -4,7 +4,8 @@ import { ApiError } from "./http";
 
 export type AdminScope =
   | { role: "master_admin"; regionId?: never }
-  | { role: "regional_admin"; regionId: string };
+  | { role: "regional_admin"; regionId: string }
+  | { role: "reviewer"; regionId?: never };
 
 export async function getAdminScope(userId: string): Promise<AdminScope> {
   const user = await prisma.user.findFirst({
@@ -22,6 +23,10 @@ export async function getAdminScope(userId: string): Promise<AdminScope> {
 
   if (user.roles.includes(RoleCode.master_admin)) {
     return { role: "master_admin" };
+  }
+
+  if (user.roles.includes(RoleCode.reviewer)) {
+    return { role: "reviewer" };
   }
 
   if (

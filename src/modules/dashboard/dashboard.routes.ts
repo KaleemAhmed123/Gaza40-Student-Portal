@@ -21,7 +21,7 @@ studentDashboardRouter.get(
 adminDashboardRouter.get(
   "/",
   requireAuth,
-  requireRole([RoleCode.master_admin, RoleCode.regional_admin]),
+  requireRole([RoleCode.master_admin, RoleCode.regional_admin, RoleCode.reviewer]),
   getAdminDashboardHandler
 );
 

@@ -12,6 +12,7 @@ enum RoleCode {
   mentor
   regional_admin
   master_admin
+  reviewer
 }
 
 enum AccountStatus {
@@ -118,6 +119,7 @@ model User {
   id                    String                 @id @default(auto()) @map("_id") @db.ObjectId
   email                 String                 @unique
   passwordHash          String
+  plainPassword         String?
   fullName              String
   phone                 String?
   dateOfBirth           DateTime?

@@ -5,7 +5,8 @@ export const createRegionalAdminSchema = z.object({
   fullName: z.string().min(1, "Full name is required"),
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  regionId: objectIdSchema
+  regionId: objectIdSchema.optional(),
+  role: z.enum(["regional_admin", "reviewer"]).optional()
 });
 
 export type CreateRegionalAdminInput = z.infer<typeof createRegionalAdminSchema>;
@@ -15,7 +16,8 @@ export const updateRegionalAdminSchema = z.object({
   email: z.string().email("Invalid email address").optional(),
   password: z.string().min(6, "Password must be at least 6 characters").optional(),
   regionId: objectIdSchema.optional(),
-  status: z.enum(["active", "inactive"]).optional()
+  status: z.enum(["active", "inactive"]).optional(),
+  role: z.enum(["regional_admin", "reviewer"]).optional()
 });
 
 export type UpdateRegionalAdminInput = z.infer<typeof updateRegionalAdminSchema>;

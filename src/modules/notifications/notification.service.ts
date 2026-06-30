@@ -1,3 +1,4 @@
+import { RoleCode } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 
 export async function createNotification(input: {
@@ -7,6 +8,16 @@ export async function createNotification(input: {
   body: string;
   link?: string;
 }) {
+  // Fetch user roles to verify if they are a reviewer
+  const user = await prisma.user.findUnique({
+    where: { id: input.userId },
+    select: { roles: true }
+  });
+
+  if (user?.roles.includes(RoleCode.reviewer) && input.type !== "admin_profile_submitted") {
+    return null;
+  }
+
   const notification = await prisma.notification.create({
     data: {
       userId: input.userId,
@@ -16,7 +27,6 @@ export async function createNotification(input: {
       link: input.link,
     },
   });
-
 
   return notification;
 }

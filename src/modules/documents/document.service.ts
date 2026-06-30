@@ -142,7 +142,7 @@ export async function getDownloadableDocument(input: {
     });
 
     if (user) {
-      if (user.roles.includes(RoleCode.master_admin)) {
+      if (user.roles.includes(RoleCode.master_admin) || user.roles.includes(RoleCode.reviewer)) {
         hasAccess = true;
       } else if (
         user.roles.includes(RoleCode.regional_admin) &&

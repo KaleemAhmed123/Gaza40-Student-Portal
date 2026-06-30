@@ -1,6 +1,6 @@
 import { RoleCode } from "@prisma/client";
 import { Router } from "express";
-import { requireActiveDbRole, requireAuth } from "../../../middleware/auth.middleware";
+import { requireAnyActiveDbRole, requireAuth } from "../../../middleware/auth.middleware";
 import {
   getStudentProfileForAdminHandler,
   listStudentProfilesHandler,
@@ -11,7 +11,7 @@ export const adminStudentProfileRouter = Router();
 
 adminStudentProfileRouter.use(
   requireAuth,
-  requireActiveDbRole(RoleCode.master_admin)
+  requireAnyActiveDbRole([RoleCode.master_admin, RoleCode.reviewer])
 );
 adminStudentProfileRouter.get("/", listStudentProfilesHandler);
 adminStudentProfileRouter.get("/:id", getStudentProfileForAdminHandler);
