@@ -337,8 +337,22 @@ export async function createQuery(input: {
   const category = await getActiveQueryCategory(input.data.queryType);
   let regionId = input.data.regionId;
   let offerId = input.data.offerId;
-  let autoAssignMentorId: string | null = null;
-  let autoAssignMentorEmail: string | null = null;
+  let autoAssignUserId: string | null = null;
+  let autoAssignEmail: string | null = null;
+
+  const metadata = category.metadata as Record<string, any> | null;
+  const assignTo = metadata?.assignTo;
+  const isMentor = assignTo === "mentor" || categoryMetadataRequires(category.metadata, "requiresOffer");
+  const isRegionalAdmin = assignTo === "regional_admin" || categoryMetadataRequires(category.metadata, "requiresRegion");
+  const isMasterAdmin = assignTo === "master_admin";
+
+  if (isMentor && !offerId) {
+    throw new ApiError(400, "An offer letter is required for this query type");
+  }
+
+  if (isRegionalAdmin && !regionId) {
+    throw new ApiError(400, "Destination country is required for this query type");
+  }
 
   // Offer-letter query type: resolve region + potential mentor from offer
   if (offerId) {
@@ -370,13 +384,99 @@ export async function createQuery(input: {
 
     // Auto-assign to mentor if the offer already has an approved, active mentor
     if (
+      isMentor &&
       offer.mentorId &&
       offer.mentor?.accountStatus === "active" &&
       offer.mentor.volunteerProfile?.volunteerStatus === VolunteerStatus.approved &&
       !offer.mentor.volunteerProfile.deletedAt
     ) {
-      autoAssignMentorId = offer.mentorId;
-      autoAssignMentorEmail = offer.mentor.email;
+      autoAssignUserId = offer.mentorId;
+      autoAssignEmail = offer.mentor.email;
+    }
+  }
+
+  // If assignTo is mentor, and we didn't specify an offerId (or the specified offer has no mentor),
+  // search the student's other offers with an active mentor
+  if (isMentor && !autoAssignUserId) {
+    const offerWithMentor = await prisma.offer.findFirst({
+      where: {
+        studentUserId: input.userId,
+        deletedAt: null,
+        mentorId: { not: null },
+        mentor: {
+          accountStatus: "active",
+          volunteerProfile: {
+            volunteerStatus: VolunteerStatus.approved,
+            deletedAt: null
+          }
+        }
+      },
+      select: {
+        mentorId: true,
+        mentor: { select: { email: true } }
+      }
+    });
+    if (offerWithMentor && offerWithMentor.mentor) {
+      autoAssignUserId = offerWithMentor.mentorId;
+      autoAssignEmail = offerWithMentor.mentor.email;
+    }
+  }
+
+  // If isRegionalAdmin is true, let's find the active Regional Admin for this regionId
+  if (isRegionalAdmin && regionId) {
+    const regionalAdmin = await prisma.regionalAdminProfile.findFirst({
+      where: {
+        regionId,
+        status: RegionalAdminStatus.active,
+        deletedAt: null,
+        user: { accountStatus: "active" }
+      },
+      select: {
+        userId: true,
+        user: { select: { email: true } }
+      }
+    });
+    if (regionalAdmin) {
+      autoAssignUserId = regionalAdmin.userId;
+      autoAssignEmail = regionalAdmin.user.email;
+    }
+  }
+
+  // If isMasterAdmin is true, let's find the first active Master Admin
+  if (isMasterAdmin) {
+    const masterAdmin = await prisma.user.findFirst({
+      where: {
+        roles: { has: RoleCode.master_admin },
+        accountStatus: "active",
+        deletedAt: null
+      },
+      select: {
+        id: true,
+        email: true
+      }
+    });
+    if (masterAdmin) {
+      autoAssignUserId = masterAdmin.id;
+      autoAssignEmail = masterAdmin.email;
+    }
+  }
+
+  // Fallback look-up for any other custom role added in the future
+  if (assignTo && !autoAssignUserId && assignTo !== "mentor" && assignTo !== "regional_admin" && assignTo !== "master_admin") {
+    const matchingUser = await prisma.user.findFirst({
+      where: {
+        roles: { has: assignTo as any },
+        accountStatus: "active",
+        deletedAt: null
+      },
+      select: {
+        id: true,
+        email: true
+      }
+    });
+    if (matchingUser) {
+      autoAssignUserId = matchingUser.id;
+      autoAssignEmail = matchingUser.email;
     }
   }
 
@@ -391,14 +491,6 @@ export async function createQuery(input: {
     }
   }
 
-  if (categoryMetadataRequires(category.metadata, "requiresRegion") && !regionId) {
-    throw new ApiError(400, "Destination country is required for this query type");
-  }
-
-  if (categoryMetadataRequires(category.metadata, "requiresOffer") && !offerId) {
-    throw new ApiError(400, "An offer letter is required for this query type");
-  }
-
   const query = await prisma.$transaction(async (tx) => {
     const createdQuery = await tx.query.create({
       data: {
@@ -408,8 +500,8 @@ export async function createQuery(input: {
         message: input.data.message,
         regionId,
         offerId,
-        ...(autoAssignMentorId
-          ? { assignedToUserId: autoAssignMentorId, status: QueryStatus.assigned }
+        ...(autoAssignUserId
+          ? { assignedToUserId: autoAssignUserId, status: QueryStatus.assigned }
           : {}),
         deletedAt: null
       }
@@ -436,18 +528,18 @@ export async function createQuery(input: {
       queryType: input.data.queryType,
       regionId,
       offerId,
-      autoAssigned: Boolean(autoAssignMentorId)
+      autoAssigned: Boolean(autoAssignUserId)
     },
     ipAddress: input.ipAddress,
     userAgent: input.userAgent
   });
 
-  if (autoAssignMentorId && autoAssignMentorEmail) {
-    notifyAssignee(autoAssignMentorEmail, input.data.title);
+  if (autoAssignUserId && autoAssignEmail) {
+    notifyAssignee(autoAssignEmail, input.data.title);
     appEmitter.emit(AppEvents.QUERY_ASSIGNED, {
-      assigneeUserId: autoAssignMentorId,
+      assigneeUserId: autoAssignUserId,
       queryId: query.id,
-      title: input.data.title
+      title: query.title
     });
   } else {
     void notifyAdmins(query.id).catch((error) => {
@@ -538,7 +630,6 @@ export async function listAdminQueries(userId: string, query: ListQueriesQuery) 
     ...(query.status ? { status: query.status } : {}),
     ...(query.queryType ? { queryType: query.queryType } : {}),
     ...(query.regionId ? { regionId: query.regionId } : {}),
-    ...(scope.isMasterAdmin ? {} : { regionId: scope.regionId }),
     ...(query.universityId ? { offer: { universityId: query.universityId } } : {}),
     ...(query.assignedToName
       ? {
@@ -548,7 +639,10 @@ export async function listAdminQueries(userId: string, query: ListQueriesQuery) 
         }
       : {}),
     ...(query.title ? { title: { contains: query.title, mode: "insensitive" } } : {}),
-    ...(query.isEscalated !== undefined ? { isEscalated: query.isEscalated } : {})
+    isEscalated: scope.isMasterAdmin
+      ? (query.isEscalated !== undefined ? query.isEscalated : undefined)
+      : false,
+    ...(scope.isMasterAdmin ? {} : { regionId: scope.regionId }),
   };
 
   return (prisma.query as any).findMany({
@@ -560,7 +654,10 @@ export async function listAdminQueries(userId: string, query: ListQueriesQuery) 
 
 export async function getAdminQuery(userId: string, queryId: string) {
   const query = await getQueryOrThrow(queryId);
-  await assertAdminCanAccessQuery(userId, query.regionId);
+  const scope = await assertAdminCanAccessQuery(userId, query.regionId);
+  if (!scope.isMasterAdmin && query.isEscalated) {
+    throw new ApiError(403, "You do not have permission to access this query");
+  }
   return query;
 }
 
@@ -572,7 +669,10 @@ export async function assignQuery(input: {
   userAgent?: string;
 }) {
   const query = await getQueryOrThrow(input.queryId);
-  await assertAdminCanAccessQuery(input.userId, query.regionId);
+  const scope = await assertAdminCanAccessQuery(input.userId, query.regionId);
+  if (!scope.isMasterAdmin && query.isEscalated) {
+    throw new ApiError(403, "You do not have permission to access this query");
+  }
   assertQueryWritable(query.status);
 
   const assignee = await prisma.user.findFirst({

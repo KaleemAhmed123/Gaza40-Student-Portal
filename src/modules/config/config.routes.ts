@@ -31,6 +31,9 @@ configRouter.get("/regions", listRegionsHandler);
 configRouter.get("/universities", listUniversitiesHandler);
 configRouter.get("/options", listConfigOptionsHandler);
 configRouter.get("/app/public/:key", getPublicConfigHandler);
+configRouter.get("/roles", (req, res) => {
+  res.json({ roles: Object.values(RoleCode) });
+});
 
 adminConfigRouter.use(requireAuth, requireActiveDbRole(RoleCode.master_admin));
 adminConfigRouter.get("/regions", listAllRegionsAdminHandler);

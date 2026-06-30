@@ -48,25 +48,25 @@ const configOptions = [
   { groupKey: "offer_type", value: "deferred", labelEn: "Deferred", sortOrder: 30 },
   { groupKey: "offer_type", value: "rejected", labelEn: "Rejected", sortOrder: 40 },
   {
-    groupKey: "query_category",
+    groupKey: "query_type",
     value: "visa_offer_issue",
     labelEn: "I am facing an issue with my visa/offer.",
     sortOrder: 10,
-    metadata: { requiresRegion: true }
+    metadata: { assignTo: "regional_admin" }
   },
   {
-    groupKey: "query_category",
+    groupKey: "query_type",
     value: "whatsapp_group_issue",
     labelEn: "I have not been added to the WhatsApp group.",
     sortOrder: 20,
-    metadata: { requiresUniversity: true }
+    metadata: { assignTo: "mentor" }
   },
   {
-    groupKey: "query_category",
+    groupKey: "query_type",
     value: "general_issue",
     labelEn: "General issue",
     sortOrder: 30,
-    metadata: {}
+    metadata: { assignTo: "master_admin" }
   },
   { groupKey: "announcement_category", value: "scholarships", labelEn: "Scholarships", sortOrder: 10 },
   { groupKey: "announcement_category", value: "deadlines", labelEn: "Deadlines", sortOrder: 20 },

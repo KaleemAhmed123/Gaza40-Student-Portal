@@ -270,8 +270,13 @@ async function validateOfferBusinessRules(
     throw new ApiError(400, "Scholarship name and amount are required when scholarship is selected");
   }
 
-  if (!input.hasScholarship && (input.scholarshipName || input.scholarshipAmountPerYear !== undefined)) {
-    throw new ApiError(400, "Scholarship fields require hasScholarship to be true");
+  if (!input.hasScholarship) {
+    if (input.scholarshipName && input.scholarshipName.trim() !== "") {
+      throw new ApiError(400, "Scholarship name cannot be set when hasScholarship is false");
+    }
+    if (input.scholarshipAmountPerYear && input.scholarshipAmountPerYear > 0) {
+      throw new ApiError(400, "Scholarship amount cannot be set when hasScholarship is false");
+    }
   }
 
   if (isResidentialSchool(input.courseLevel) && input.boardingFees === undefined) {

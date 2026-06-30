@@ -4,25 +4,25 @@ const prisma = new PrismaClient();
 
 const newConfigOptions = [
   {
-    groupKey: 'query_category',
+    groupKey: 'query_type',
     value: 'identity_document_missing',
     labelEn: 'I do not have a passport or national ID (Identity document missing).',
     sortOrder: 40,
-    metadata: { requiresRegion: true }
+    metadata: { assignTo: 'regional_admin' }
   },
   {
-    groupKey: 'query_category',
+    groupKey: 'query_type',
     value: 'moi_certificate_missing',
     labelEn: 'I do not have an English Test Certificate or MOI Certificate.',
     sortOrder: 50,
-    metadata: { requiresRegion: true }
+    metadata: { assignTo: 'regional_admin' }
   },
   {
-    groupKey: 'query_category',
+    groupKey: 'query_type',
     value: 'university_missing',
     labelEn: 'My university/college is missing from the dropdown list.',
     sortOrder: 60,
-    metadata: { requiresRegion: true }
+    metadata: { assignTo: 'regional_admin' }
   }
 ];
 

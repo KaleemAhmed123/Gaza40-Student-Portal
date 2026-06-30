@@ -457,7 +457,7 @@ export async function getMentorDashboard(userId: string) {
       const [approvedOffersForMetrics, financialRules] = await Promise.all([
         prisma.offer.findMany({
           where: {
-            studentUserId: { in: assignedStudentUserIds },
+            mentorId: userId,
             reviewStatus: OfferReviewStatus.approved,
             deletedAt: null
           },
