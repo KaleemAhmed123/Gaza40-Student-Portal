@@ -6,6 +6,7 @@ import {
   listCsvJobsHandler,
   getCsvJobHandler,
   getCsvJobDownloadUrlHandler,
+  downloadCsvFileDirectHandler,
   deleteCsvJobHandler,
   retryCsvJobHandler,
 } from "./csv-generator.controller";
@@ -19,5 +20,6 @@ csvGeneratorRouter.post("/",                          createCsvJobHandler);
 csvGeneratorRouter.get("/",                           listCsvJobsHandler);
 csvGeneratorRouter.get("/:jobId",                     getCsvJobHandler);
 csvGeneratorRouter.get("/:jobId/download",            getCsvJobDownloadUrlHandler);
+csvGeneratorRouter.get("/:jobId/download-file",       downloadCsvFileDirectHandler);
 csvGeneratorRouter.delete("/:jobId",                  deleteCsvJobHandler);
 csvGeneratorRouter.post("/:jobId/retry",              retryCsvJobHandler);

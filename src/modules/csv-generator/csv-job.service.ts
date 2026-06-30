@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { prisma } from "../../db/prisma";
 import { ApiError } from "../../shared/http";
 import { recordAuditLog } from "../../shared/audit";
@@ -329,10 +331,48 @@ export async function getCsvJobDownloadUrl(userId: string, roles: string[], jobI
     throw new ApiError(410, "CSV has expired");
   }
 
+  if (job.storageBucket === "local_private") {
+    // Return relative backend endpoint for direct local download
+    return {
+      url: `/api/csv-generator/${job.id}/download-file`,
+      expiresAt: job.expiresAt
+    };
+  }
+
   const url = await getCsvDownloadUrl(job.storageKey!, job.storageBucket!);
   if (!url) throw new ApiError(500, "Could not generate download URL");
 
   return { url, expiresAt: job.expiresAt };
+}
+
+export async function getCsvJobFile(userId: string, roles: string[], jobId: string) {
+  const job = await prisma.csvJob.findFirst({ where: buildJobWhere(userId, roles, jobId) });
+  if (!job) throw new ApiError(404, "CSV job not found");
+
+  if (job.status === CsvJobStatus.expired) throw new ApiError(410, "CSV has expired and is no longer available");
+  if (job.status !== CsvJobStatus.completed) throw new ApiError(400, `CSV is not ready (status: ${job.status})`);
+
+  if (job.expiresAt && job.expiresAt < new Date()) {
+    throw new ApiError(410, "CSV has expired");
+  }
+
+  const filename = `${job.dataset}-${jobId}.csv`;
+
+  if (job.storageBucket === "local_private") {
+    const filePath = path.resolve(process.cwd(), job.storageKey!);
+    const expectedRoot = path.resolve(process.cwd(), "csv-exports");
+    if (!filePath.startsWith(expectedRoot)) {
+      throw new ApiError(400, "Invalid storage key");
+    }
+    if (!fs.existsSync(filePath)) {
+      throw new ApiError(404, "CSV file not found on disk");
+    }
+    return { isLocal: true, filePath, filename };
+  }
+
+  // Fallback for non-local R2 file: get signed URL
+  const url = await getCsvDownloadUrl(job.storageKey!, job.storageBucket!);
+  return { isLocal: false, url, filename };
 }
 
 export async function deleteCsvJob(userId: string, roles: string[], jobId: string) {

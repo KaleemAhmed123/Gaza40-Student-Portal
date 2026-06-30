@@ -1,10 +1,11 @@
-import { asyncHandler, sendSuccess } from "../../shared/http";
+import { asyncHandler, sendSuccess, ApiError } from "../../shared/http";
 import { generateCsvBodySchema, listCsvJobsQuerySchema } from "./csv-generator.validation";
 import {
   createCsvJob,
   listCsvJobs,
   getCsvJob,
   getCsvJobDownloadUrl,
+  getCsvJobFile,
   deleteCsvJob,
   retryCsvJob,
 } from "./csv-job.service";
@@ -48,4 +49,24 @@ export const deleteCsvJobHandler = asyncHandler(async (req, res) => {
 export const retryCsvJobHandler = asyncHandler(async (req, res) => {
   const result = await retryCsvJob(req.authUser!.id, req.authUser!.roles, req.params.jobId);
   sendSuccess(res, result, 202);
+});
+
+export const downloadCsvFileDirectHandler = asyncHandler(async (req, res) => {
+  const result = await getCsvJobFile(req.authUser!.id, req.authUser!.roles, req.params.jobId);
+
+  if (result.isLocal) {
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${result.filename}"`
+    );
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.download(result.filePath!, result.filename);
+  } else {
+    if (result.url) {
+      res.redirect(302, result.url);
+    } else {
+      throw new ApiError(500, "Could not retrieve CSV file");
+    }
+  }
 });

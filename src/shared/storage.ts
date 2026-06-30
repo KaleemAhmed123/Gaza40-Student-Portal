@@ -93,6 +93,9 @@ export async function getSignedStorageUrl(
      return null;
   }
 
+  // AWS Signature Version 4 presigned URLs must have an expiration date less than 7 days (604800 seconds)
+  const cappedExpiresInSeconds = Math.min(expiresInSeconds, 7 * 24 * 60 * 60);
+
   const command = new GetObjectCommand({
     Bucket: targetBucket,
     Key: key,
@@ -102,7 +105,7 @@ export async function getSignedStorageUrl(
   });
 
   try {
-    return await getSignedUrl(s3Client, command, { expiresIn: expiresInSeconds });
+    return await getSignedUrl(s3Client, command, { expiresIn: cappedExpiresInSeconds });
   } catch (error) {
     console.error("Failed to generate signed URL:", error);
     return null;
